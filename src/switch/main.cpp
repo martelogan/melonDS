@@ -1,19 +1,19 @@
 /*
-Copyright 2018 Hydr8gon
+    Copyright 2018 Hydr8gon
 
-This file is part of melonDS.
+    This file is part of melonDS.
 
-melonDS is free software: you can redistribute it and/or modify it under
-the terms of the GNU General Public License as published by the Free
-Software Foundation, either version 3 of the License, or (at your option)
-any later version.
+    melonDS is free software: you can redistribute it and/or modify it under
+    the terms of the GNU General Public License as published by the Free
+    Software Foundation, either version 3 of the License, or (at your option)
+    any later version.
 
-melonDS is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+    melonDS is distributed in the hope that it will be useful, but WITHOUT ANY
+    WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+    FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along
-with melonDS. If not, see http://www.gnu.org/licenses/.
+    You should have received a copy of the GNU General Public License along
+    with melonDS. If not, see http://www.gnu.org/licenses/.
 */
 
 #include <algorithm>
@@ -28,6 +28,7 @@ with melonDS. If not, see http://www.gnu.org/licenses/.
 #define s64 s64_
 
 #include "../Config.h"
+#include "../Savestate.h"
 #include "../GPU.h"
 #include "../NDS.h"
 #include "../SPU.h"
@@ -143,20 +144,17 @@ int main(int argc, char **argv)
         {
             romPath += "/" + files[selection];
             selection = 0;
-            main(argc, argv);
-            return 0;
+            return main(argc, argv);
         }
         else if (kDown & KEY_UP && selection > 0)
         {
             selection--;
-            main(argc, argv);
-            return 0;
+            return main(argc, argv);
         }
         else if (kDown & KEY_DOWN && selection < files.size() - 1)
         {
             selection++;
-            main(argc, argv);
-            return 0;
+            return main(argc, argv);
         }
     }
 
@@ -212,6 +210,16 @@ int main(int argc, char **argv)
         hidScanInput();
         u32 kDown = hidKeysDown(CONTROLLER_P1_AUTO);
         u32 kUp = hidKeysUp(CONTROLLER_P1_AUTO);
+
+        if (kDown & KEY_L || kDown & KEY_R)
+        {
+            std::string statePath = romPath.substr(0, romPath.rfind(".")) + ".bin";
+            Savestate* state = new Savestate(const_cast<char*>(statePath.c_str()), kDown & KEY_L);
+            mutexLock(&mutex);
+            NDS::DoSavestate(state);
+            mutexUnlock(&mutex);
+            delete state;
+        }
 
         for (int i = 0; i < 12; i++)
         {

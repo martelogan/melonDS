@@ -36,12 +36,6 @@
 #include "../SPU.h"
 #include "../version.h"
 
-std::string romPath = "sdmc:/";
-std::string sramPath, statePath;
-unsigned int selection;
-bool options;
-bool optionsLoaded;
-std::vector<std::string> optionValues = { "1", "1" };
 u8* bufferData;
 AudioOutBuffer* releasedBuffer;
 AudioOutBuffer buffer;
@@ -118,137 +112,135 @@ int main(int argc, char **argv)
     gfxInitDefault();
     consoleInit(NULL);
 
-    printf("melonDS" MELONDS_VERSION "\n");
-    printf(MELONDS_URL "\n\n");
+    bool options = false;
+    std::string romPath = "sdmc:/";
+    std::string sramPath, statePath;
 
-    if (!options)
+    while (romPath.find(".nds", (romPath.length() - 4)) == std::string::npos)
     {
-        DIR* directory = opendir(romPath.c_str());
-        dirent* entry;
-        std::vector<std::string> files;
-        while ((entry = readdir(directory)))
-        {
-            std::string name = entry->d_name;
-            if (entry->d_type == DT_DIR || name.find(".nds", (name.length() - 4)) != std::string::npos)
-                files.push_back(name);
-        }
-        closedir(directory);
-        std::sort(files.begin(), files.end());
+        consoleClear();
+        printf("melonDS " MELONDS_VERSION "\n");
+        printf(MELONDS_URL);
 
-        for (unsigned int i = 0; i < files.size(); i++)
-        {
-            if (i == selection)
-                printf(CONSOLE_WHITE"%s\n", files[i].c_str());
-            else
-                printf(CONSOLE_RESET"%s\n", files[i].c_str());
-        }
-        printf(CONSOLE_RESET"\x1b[45;1HPress X to open the options menu.");
-        gfxFlushBuffers();
-        gfxSwapBuffers();
-
-        while (romPath.find(".nds", (romPath.length() - 4)) == std::string::npos)
-        {
-            hidScanInput();
-            u32 kDown = hidKeysDown(CONTROLLER_P1_AUTO);
-            if (kDown & KEY_A && files.size() > 0)
-            {
-                romPath += "/" + files[selection];
-                selection = 0;
-                return main(argc, argv);
-            }
-            else if (kDown & KEY_B)
-            {
-                romPath = romPath.substr(0, romPath.rfind("/"));
-                selection = 0;
-                return main(argc, argv);
-            }
-            else if (kDown & KEY_UP && selection > 0)
-            {
-                selection--;
-                return main(argc, argv);
-            }
-            else if (kDown & KEY_DOWN && selection < files.size() - 1)
-            {
-                selection++;
-                return main(argc, argv);
-            }
-            else if (kDown & KEY_X)
-            {
-                options = true;
-                selection = 0;
-                return main(argc, argv);
-            }
-        }
-
-        sramPath = romPath.substr(0, romPath.rfind(".")) + ".sav";
-        statePath = romPath.substr(0, romPath.rfind(".")) + ".mln";
-    }
-    else
-    {
+        unsigned int selection = 0;
+        std::fstream config;
         std::vector<std::string> optionDisplay = { "Boot game directly", "Threaded 3D renderer" };
         std::vector<std::string> optionEntries = { "DirectBoot", "Threaded3D" };
-        std::fstream config;
-        config.open("melonds.ini", std::ios::in);
-        std::string line;
-        while (!optionsLoaded && getline(config, line))
-        {
-            std::vector<std::string>::iterator iter = std::find(optionEntries.begin(), optionEntries.end(), line.substr(0, line.find("=")));
-            if (iter != optionEntries.end())
-                optionValues[iter - optionEntries.begin()] = line.substr(line.find("=") + 1);
-        }
-        config.close();
-        optionsLoaded = true;
+        std::vector<std::string> optionValues = { "1", "1" };
+        std::vector<std::string> files;
 
-        for (unsigned int i = 0; i < optionDisplay.size(); i++)
+        if (options)
         {
-            if (i == selection)
+            config.open("melonds.ini", std::ios::in);
+            std::string line;
+            while (getline(config, line))
             {
-                printf(CONSOLE_WHITE"\x1b[%d;1H%s", i + 4, optionDisplay[i].c_str());
-                printf(CONSOLE_WHITE"\x1b[%d;30H%s", i + 4, optionValues[i].c_str());
+                std::vector<std::string>::iterator iter = std::find(optionEntries.begin(), optionEntries.end(), line.substr(0, line.find("=")));
+                if (iter != optionEntries.end())
+                    optionValues[iter - optionEntries.begin()] = line.substr(line.find("=") + 1);
             }
-            else
-            {
-                printf(CONSOLE_RESET"\x1b[%d;1H%s", i + 4, optionDisplay[i].c_str());
-                printf(CONSOLE_RESET"\x1b[%d;30H%s", i + 4, optionValues[i].c_str());
-            }
+            config.close();
         }
-        printf(CONSOLE_RESET"\x1b[45;1HPress X to return to the file browser.");
-        gfxFlushBuffers();
-        gfxSwapBuffers();
+        else
+        {
+            DIR* directory = opendir(romPath.c_str());
+            dirent* entry;
+            while ((entry = readdir(directory)))
+            {
+                std::string name = entry->d_name;
+                if (entry->d_type == DT_DIR || name.find(".nds", (name.length() - 4)) != std::string::npos)
+                    files.push_back(name);
+            }
+            closedir(directory);
+            std::sort(files.begin(), files.end());
+        }
 
-        while (options)
+        while (true)
         {
             hidScanInput();
             u32 kDown = hidKeysDown(CONTROLLER_P1_AUTO);
-            if (kDown & KEY_A)
-            {
-                if (optionValues[selection] == "0")
-                    optionValues[selection] = "1";
-                else
-                    optionValues[selection] = "0";
-                return main(argc, argv);
-            }
-            else if (kDown & KEY_UP && selection > 0)
-            {
-                selection--;
-                return main(argc, argv);
-            }
-            else if (kDown & KEY_DOWN && selection < optionDisplay.size() - 1)
-            {
-                selection++;
-                return main(argc, argv);
-            }
-            else if (kDown & KEY_X)
-            {
-                config.open("melonds.ini", std::ios::out);
-                for (unsigned int i = 0; i < optionDisplay.size(); i++)
-                    config << optionEntries[i] + "=" + optionValues[i] + "\n";
-                config.close();
 
-                options = optionsLoaded = false;
-                selection = 0;
-                return main(argc, argv);
+            if (options)
+            {
+                if (kDown & KEY_A)
+                {
+                    if (optionValues[selection] == "0")
+                        optionValues[selection] = "1";
+                    else
+                        optionValues[selection] = "0";
+                }
+                else if (kDown & KEY_UP && selection > 0)
+                {
+                    selection--;
+                }
+                else if (kDown & KEY_DOWN && selection < optionDisplay.size() - 1)
+                {
+                    selection++;
+                }
+                else if (kDown & KEY_X)
+                {
+                    config.open("melonds.ini", std::ios::out);
+                    for (unsigned int i = 0; i < optionDisplay.size(); i++)
+                        config << optionEntries[i] + "=" + optionValues[i] + "\n";
+                    config.close();
+
+                    options = false;
+                    break;
+                }
+
+                for (unsigned int i = 0; i < optionDisplay.size(); i++)
+                {
+                    if (i == selection)
+                    {
+                        printf(CONSOLE_WHITE"\x1b[%d;1H%s", i + 4, optionDisplay[i].c_str());
+                        printf(CONSOLE_WHITE"\x1b[%d;30H%s", i + 4, optionValues[i].c_str());
+                    }
+                    else
+                    {
+                        printf(CONSOLE_RESET"\x1b[%d;1H%s", i + 4, optionDisplay[i].c_str());
+                        printf(CONSOLE_RESET"\x1b[%d;30H%s", i + 4, optionValues[i].c_str());
+                    }
+                }
+                printf(CONSOLE_RESET"\x1b[45;1HPress X to return to the file browser.");
             }
+            else
+            {
+                if (kDown & KEY_A && files.size() > 0)
+                {
+                    romPath += "/" + files[selection];
+                    break;
+                }
+                else if (kDown & KEY_B)
+                {
+                    romPath = romPath.substr(0, romPath.rfind("/"));
+                    break;
+                }
+                else if (kDown & KEY_UP && selection > 0)
+                {
+                    selection--;
+                }
+                else if (kDown & KEY_DOWN && selection < files.size() - 1)
+                {
+                    selection++;
+                }
+                else if (kDown & KEY_X)
+                {
+                    options = true;
+                    break;
+                }
+
+                for (unsigned int i = 0; i < files.size(); i++)
+                {
+                    if (i == selection)
+                        printf(CONSOLE_WHITE"\x1b[%d;1H%s", i + 4, files[i].c_str());
+                    else
+                        printf(CONSOLE_RESET"\x1b[%d;1H%s", i + 4, files[i].c_str());
+                }
+                printf(CONSOLE_RESET"\x1b[45;1HPress X to open the options menu.");
+            }
+
+            gfxFlushBuffers();
+            gfxSwapBuffers();
         }
     }
 
@@ -256,23 +248,33 @@ int main(int argc, char **argv)
 
     if (!Config::HasConfigFile("bios7.bin") || !Config::HasConfigFile("bios9.bin") || !Config::HasConfigFile("firmware.bin"))
     {
+        consoleClear();
         printf("One or more of the following required files don't exist or couldn't be accessed:");
         printf("bios7.bin -- ARM7 BIOS\n");
         printf("bios9.bin -- ARM9 BIOS\n");
         printf("firmware.bin -- firmware image\n\n");
         printf("Dump the files from your DS and place them in sdmc:/switch/melonds");
-        gfxFlushBuffers();
-        gfxSwapBuffers();
-        while (true);
+        while (true)
+        {
+            gfxFlushBuffers();
+            gfxSwapBuffers();
+        }
     }
 
     NDS::Init();
 
+    sramPath = romPath.substr(0, romPath.rfind(".")) + ".sav";
+    statePath = romPath.substr(0, romPath.rfind(".")) + ".mln";
+
     if (!NDS::LoadROM(romPath.c_str(), sramPath.c_str(), Config::DirectBoot))
     {
-        gfxFlushBuffers();
-        gfxSwapBuffers();
-        while (true);
+        consoleClear();
+        printf("Failed to load ROM. Make sure the file can be accessed.");
+        while (true)
+        {
+            gfxFlushBuffers();
+            gfxSwapBuffers();
+        }
     }
 
     consoleClear();

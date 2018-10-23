@@ -37,6 +37,7 @@
 #include "../version.h"
 
 std::string romPath = "sdmc:/";
+std::string sramPath, statePath;
 unsigned int selection;
 bool options;
 bool optionsLoaded;
@@ -178,6 +179,9 @@ int main(int argc, char **argv)
                 return main(argc, argv);
             }
         }
+
+        sramPath = romPath.substr(0, romPath.rfind(".")) + ".sav";
+        statePath = romPath.substr(0, romPath.rfind(".")) + ".mln";
     }
     else
     {
@@ -264,7 +268,7 @@ int main(int argc, char **argv)
 
     NDS::Init();
 
-    if (!NDS::LoadROM(romPath.c_str(), Config::DirectBoot))
+    if (!NDS::LoadROM(romPath.c_str(), sramPath.c_str(), Config::DirectBoot))
     {
         gfxFlushBuffers();
         gfxSwapBuffers();
@@ -303,7 +307,6 @@ int main(int argc, char **argv)
 
         if (kDown & KEY_L || kDown & KEY_R)
         {
-            std::string statePath = romPath.substr(0, romPath.rfind(".")) + ".bin";
             Savestate* state = new Savestate(const_cast<char*>(statePath.c_str()), kDown & KEY_L);
             mutexLock(&mutex);
             NDS::DoSavestate(state);

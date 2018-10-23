@@ -36,6 +36,9 @@
 #include "../SPU.h"
 #include "../version.h"
 
+std::vector<std::string> optionDisplay = { "Boot game directly", "Threaded 3D renderer", "Vsync", "Audio output" };
+std::vector<std::string> optionEntries = { "DirectBoot", "Threaded3D", "Vsync", "AudioOut" };
+std::vector<std::string> optionValues = { "1", "1", "1", "1" };
 u8* bufferData;
 AudioOutBuffer* releasedBuffer;
 AudioOutBuffer buffer;
@@ -124,36 +127,28 @@ int main(int argc, char **argv)
 
         unsigned int selection = 0;
         std::fstream config;
-        std::vector<std::string> optionDisplay = { "Boot game directly", "Threaded 3D renderer" };
-        std::vector<std::string> optionEntries = { "DirectBoot", "Threaded3D" };
-        std::vector<std::string> optionValues = { "1", "1" };
         std::vector<std::string> files;
 
-        if (options)
+        config.open("melonds.ini", std::ios::in);
+        std::string line;
+        while (getline(config, line))
         {
-            config.open("melonds.ini", std::ios::in);
-            std::string line;
-            while (getline(config, line))
-            {
-                std::vector<std::string>::iterator iter = std::find(optionEntries.begin(), optionEntries.end(), line.substr(0, line.find("=")));
-                if (iter != optionEntries.end())
-                    optionValues[iter - optionEntries.begin()] = line.substr(line.find("=") + 1);
-            }
-            config.close();
+            std::vector<std::string>::iterator iter = std::find(optionEntries.begin(), optionEntries.end(), line.substr(0, line.find("=")));
+            if (iter != optionEntries.end())
+                optionValues[iter - optionEntries.begin()] = line.substr(line.find("=") + 1);
         }
-        else
+        config.close();
+
+        DIR* directory = opendir(romPath.c_str());
+        dirent* entry;
+        while ((entry = readdir(directory)))
         {
-            DIR* directory = opendir(romPath.c_str());
-            dirent* entry;
-            while ((entry = readdir(directory)))
-            {
-                std::string name = entry->d_name;
-                if (entry->d_type == DT_DIR || name.find(".nds", (name.length() - 4)) != std::string::npos)
-                    files.push_back(name);
-            }
-            closedir(directory);
-            std::sort(files.begin(), files.end());
+            std::string name = entry->d_name;
+            if (entry->d_type == DT_DIR || name.find(".nds", (name.length() - 4)) != std::string::npos)
+                files.push_back(name);
         }
+        closedir(directory);
+        std::sort(files.begin(), files.end());
 
         while (true)
         {
@@ -164,10 +159,7 @@ int main(int argc, char **argv)
             {
                 if (kDown & KEY_A)
                 {
-                    if (optionValues[selection] == "0")
-                        optionValues[selection] = "1";
-                    else
-                        optionValues[selection] = "0";
+                    optionValues[selection] = optionValues[selection] == "0" ? "1" : "0";
                 }
                 else if (kDown & KEY_UP && selection > 0)
                 {
@@ -193,12 +185,12 @@ int main(int argc, char **argv)
                     if (i == selection)
                     {
                         printf(CONSOLE_WHITE"\x1b[%d;1H%s", i + 4, optionDisplay[i].c_str());
-                        printf(CONSOLE_WHITE"\x1b[%d;30H%s", i + 4, optionValues[i].c_str());
+                        printf(CONSOLE_WHITE"\x1b[%d;30H%s", i + 4, optionValues[i] == "0" ? "Off" : "On ");
                     }
                     else
                     {
                         printf(CONSOLE_RESET"\x1b[%d;1H%s", i + 4, optionDisplay[i].c_str());
-                        printf(CONSOLE_RESET"\x1b[%d;30H%s", i + 4, optionValues[i].c_str());
+                        printf(CONSOLE_RESET"\x1b[%d;30H%s", i + 4, optionValues[i] == "0" ? "Off" : "On ");
                     }
                 }
                 printf(CONSOLE_RESET"\x1b[45;1HPress X to return to the file browser.");
@@ -281,23 +273,26 @@ int main(int argc, char **argv)
     fclose(stdout);
     gfxConfigureResolution(682, 384);
 
-    audoutInitialize();
-    audoutStartAudioOut();
-
-    bufferData = (u8*)memalign(0x1000, 710 * 8);
-    buffer.next = NULL;
-    buffer.buffer = bufferData;
-    buffer.buffer_size = 710 * 8;
-    buffer.data_size = 710 * 8;
-    buffer.data_offset = 0;
-
     Thread frameThread;
     threadCreate(&frameThread, advFrame, NULL, 0x80000, 0x30, 1);
     threadStart(&frameThread);
 
-    Thread audioThread;
-    threadCreate(&audioThread, playAudio, NULL, 0x80000, 0x30, 3);
-    threadStart(&audioThread);
+    if (optionValues[3] == "1")
+    {
+        audoutInitialize();
+        audoutStartAudioOut();
+
+        bufferData = (u8*)memalign(0x1000, 710 * 8);
+        buffer.next = NULL;
+        buffer.buffer = bufferData;
+        buffer.buffer_size = 710 * 8;
+        buffer.data_size = 710 * 8;
+        buffer.data_offset = 0;
+
+        Thread audioThread;
+        threadCreate(&audioThread, playAudio, NULL, 0x80000, 0x30, 3);
+        threadStart(&audioThread);
+    }
 
     u32 width, height;
     HidControllerKeys keys[] = { KEY_A, KEY_B, KEY_MINUS, KEY_PLUS, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ZR, KEY_ZL, KEY_X, KEY_Y };
@@ -343,11 +338,13 @@ int main(int argc, char **argv)
 
         u32* src = GPU::Framebuffer;
         u32* dst = (u32*)gfxGetFramebuffer(&width, &height);
-        mutexLock(&mutex);
+        if (optionValues[2] == "1")
+            mutexLock(&mutex);
         for (int x = 0; x < 256; x++)
             for (int y = 0; y < 384; y++)
                 dst[gfxGetFramebufferDisplayOffset(x + 213, y)] = swapRedBlue(src[(y * 256) + x]);
-        mutexUnlock(&mutex);
+        if (optionValues[2] == "1")
+            mutexUnlock(&mutex);
         gfxFlushBuffers();
         gfxSwapBuffers();
     }

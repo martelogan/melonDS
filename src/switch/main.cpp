@@ -140,9 +140,15 @@ int main(int argc, char **argv)
     {
         hidScanInput();
         u32 kDown = hidKeysDown(CONTROLLER_P1_AUTO);
-        if (kDown & KEY_A)
+        if (kDown & KEY_A && files.size() > 0)
         {
             romPath += "/" + files[selection];
+            selection = 0;
+            return main(argc, argv);
+        }
+        else if (kDown & KEY_B)
+        {
+            romPath = romPath.substr(0, romPath.rfind("/"));
             selection = 0;
             return main(argc, argv);
         }

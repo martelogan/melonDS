@@ -40,7 +40,7 @@ EXEFS_SRC	:=	exefs_src
 
 APP_TITLE   := melonDS
 APP_AUTHOR  := Hydr8gon, StapleButter
-APP_VERSION := 0.6b
+APP_VERSION := 0.7
 ICON        := icon/melon.jpg
 
 #---------------------------------------------------------------------------------

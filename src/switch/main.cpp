@@ -36,9 +36,9 @@
 #include "../SPU.h"
 #include "../version.h"
 
-std::vector<std::string> optionDisplay = { "Boot game directly", "Threaded 3D renderer", "Vsync", "Audio output" };
-std::vector<std::string> optionEntries = { "DirectBoot", "Threaded3D", "Vsync", "AudioOut" };
-std::vector<std::string> optionValues = { "1", "1", "1", "1" };
+std::vector<std::string> optionDisplay = { "Boot game directly", "Threaded 3D renderer", "Vsync" };
+std::vector<std::string> optionEntries = { "DirectBoot", "Threaded3D", "Vsync" };
+std::vector<std::string> optionValues = { "1", "1", "1" };
 u8* bufferData;
 AudioOutBuffer* releasedBuffer;
 AudioOutBuffer buffer;
@@ -117,7 +117,17 @@ int main(int argc, char **argv)
 
     bool options = false;
     std::string romPath = "sdmc:/";
-    std::string sramPath, statePath;
+
+    std::fstream config;
+    config.open("melonds.ini", std::ios::in);
+    std::string line;
+    while (getline(config, line))
+    {
+        std::vector<std::string>::iterator iter = std::find(optionEntries.begin(), optionEntries.end(), line.substr(0, line.find("=")));
+        if (iter != optionEntries.end())
+            optionValues[iter - optionEntries.begin()] = line.substr(line.find("=") + 1);
+    }
+    config.close();
 
     while (romPath.find(".nds", (romPath.length() - 4)) == std::string::npos)
     {
@@ -126,18 +136,7 @@ int main(int argc, char **argv)
         printf(MELONDS_URL);
 
         unsigned int selection = 0;
-        std::fstream config;
         std::vector<std::string> files;
-
-        config.open("melonds.ini", std::ios::in);
-        std::string line;
-        while (getline(config, line))
-        {
-            std::vector<std::string>::iterator iter = std::find(optionEntries.begin(), optionEntries.end(), line.substr(0, line.find("=")));
-            if (iter != optionEntries.end())
-                optionValues[iter - optionEntries.begin()] = line.substr(line.find("=") + 1);
-        }
-        config.close();
 
         DIR* directory = opendir(romPath.c_str());
         dirent* entry;
@@ -202,7 +201,7 @@ int main(int argc, char **argv)
                     romPath += "/" + files[selection];
                     break;
                 }
-                else if (kDown & KEY_B)
+                else if (kDown & KEY_B && romPath != "sdmc:/")
                 {
                     romPath = romPath.substr(0, romPath.rfind("/"));
                     break;
@@ -255,8 +254,8 @@ int main(int argc, char **argv)
 
     NDS::Init();
 
-    sramPath = romPath.substr(0, romPath.rfind(".")) + ".sav";
-    statePath = romPath.substr(0, romPath.rfind(".")) + ".mln";
+    std::string sramPath = romPath.substr(0, romPath.rfind(".")) + ".sav";
+    std::string statePath = romPath.substr(0, romPath.rfind(".")) + ".mln";
 
     if (!NDS::LoadROM(romPath.c_str(), sramPath.c_str(), Config::DirectBoot))
     {
@@ -277,22 +276,19 @@ int main(int argc, char **argv)
     threadCreate(&frameThread, advFrame, NULL, 0x80000, 0x30, 1);
     threadStart(&frameThread);
 
-    if (optionValues[3] == "1")
-    {
-        audoutInitialize();
-        audoutStartAudioOut();
+    audoutInitialize();
+    audoutStartAudioOut();
 
-        bufferData = (u8*)memalign(0x1000, 710 * 8);
-        buffer.next = NULL;
-        buffer.buffer = bufferData;
-        buffer.buffer_size = 710 * 8;
-        buffer.data_size = 710 * 8;
-        buffer.data_offset = 0;
+    bufferData = (u8*)memalign(0x1000, 710 * 8);
+    buffer.next = NULL;
+    buffer.buffer = bufferData;
+    buffer.buffer_size = 710 * 8;
+    buffer.data_size = 710 * 8;
+    buffer.data_offset = 0;
 
-        Thread audioThread;
-        threadCreate(&audioThread, playAudio, NULL, 0x80000, 0x30, 3);
-        threadStart(&audioThread);
-    }
+    Thread audioThread;
+    threadCreate(&audioThread, playAudio, NULL, 0x80000, 0x30, 0);
+    threadStart(&audioThread);
 
     u32 width, height;
     HidControllerKeys keys[] = { KEY_A, KEY_B, KEY_MINUS, KEY_PLUS, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ZR, KEY_ZL, KEY_X, KEY_Y };

@@ -22,6 +22,7 @@
 #include <fstream>
 #include <iostream>
 #include <stdio.h>
+#include <string.h>
 #include <switch.h>
 #include <vector>
 
@@ -40,12 +41,13 @@
 #include "../SPU.h"
 #include "../version.h"
 
-std::vector<std::string> optionDisplay = { "Boot game directly", "Threaded 3D renderer", "Vsync" };
-std::vector<std::string> optionEntries = { "DirectBoot", "Threaded3D", "Vsync" };
-std::vector<std::string> optionValues = { "1", "1", "1" };
+std::vector<std::string> optionDisplay = { "Boot game directly", "Threaded 3D renderer" };
+std::vector<std::string> optionEntries = { "DirectBoot", "Threaded3D" };
+std::vector<std::string> optionValues = { "1", "1" };
 u8* bufferData;
 AudioOutBuffer* releasedBuffer;
 AudioOutBuffer buffer;
+u32* framebuffer;
 static EGLDisplay s_display;
 static EGLContext s_context;
 static EGLSurface s_surface;
@@ -214,6 +216,7 @@ void advFrame(void* args)
         mutexLock(&mutex);
         NDS::RunFrame();
         mutexUnlock(&mutex);
+        memcpy(framebuffer, GPU::Framebuffer, 256 * 384 * 4);
     }
 }
 
@@ -408,6 +411,8 @@ int main(int argc, char **argv)
     threadCreate(&audioThread, playAudio, NULL, 0x80000, 0x30, 0);
     threadStart(&audioThread);
 
+    framebuffer = (u32*)memalign(0x1000, 256 * 384 * 4);
+
     HidControllerKeys keys[] = { KEY_A, KEY_B, KEY_MINUS, KEY_PLUS, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ZR, KEY_ZL, KEY_X, KEY_Y };
     while (true)
     {
@@ -449,11 +454,7 @@ int main(int argc, char **argv)
             NDS::ReleaseScreen();
         }
 
-        if (optionValues[2] == "1")
-            mutexLock(&mutex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 384, 0, GL_BGRA, GL_UNSIGNED_BYTE, GPU::Framebuffer);
-        if (optionValues[2] == "1")
-            mutexUnlock(&mutex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 384, 0, GL_BGRA, GL_UNSIGNED_BYTE, framebuffer);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         eglSwapBuffers(s_display, s_surface);
     }

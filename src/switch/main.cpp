@@ -25,6 +25,10 @@
 #include <switch.h>
 #include <vector>
 
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <glad/glad.h>
+
 // Deal with conflicting typedefs
 #define u64 u64_
 #define s64 s64_
@@ -42,17 +46,129 @@ std::vector<std::string> optionValues = { "1", "1", "1" };
 u8* bufferData;
 AudioOutBuffer* releasedBuffer;
 AudioOutBuffer buffer;
+static EGLDisplay s_display;
+static EGLContext s_context;
+static EGLSurface s_surface;
+static GLuint s_program, s_vao, s_vbo, s_tex;
+static GLint loc_tex_diffuse;
 static Mutex mutex;
 
-u32 swapRedBlue(u32 pixel)
+static const char* const vertexShader =
+    "#version 330 core\n"
+    "precision mediump float;\n"
+
+    "layout (location = 0) in vec3 inPos;\n"
+    "layout (location = 1) in vec2 inTexCoord;\n"
+    "out vec2 vtxTexCoord;\n"
+
+    "void main()\n"
+    "{\n"
+        "gl_Position = vec4(inPos, 1.0);\n"
+        "vtxTexCoord = inTexCoord;\n"
+    "}";
+
+static const char* const fragmentShader =
+    "#version 330 core\n"
+    "precision mediump float;\n"
+
+    "in vec2 vtxTexCoord;\n"
+    "out vec4 fragColor;\n"
+    "uniform sampler2D tex_diffuse;\n"
+
+    "void main()\n"
+    "{\n"
+        "fragColor = texture(tex_diffuse, vtxTexCoord);\n"
+    "}";
+
+static void initEgl()
 {
-    u32 swap;
-    swap = (u8)pixel;
-    swap <<= 8;
-    swap |= (u8)(pixel >> 8);
-    swap <<= 8;
-    swap |= (u8)(pixel >> 16);
-    return swap;
+    EGLConfig config;
+    EGLint numConfigs;
+    static const EGLint framebufferAttributeList[] = { EGL_RED_SIZE, 1, EGL_GREEN_SIZE, 1, EGL_BLUE_SIZE, 1, EGL_NONE };
+    static const EGLint contextAttributeList[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
+
+    s_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    eglInitialize(s_display, NULL, NULL);
+    eglBindAPI(EGL_OPENGL_API);
+    eglChooseConfig(s_display, framebufferAttributeList, &config, 1, &numConfigs);
+    s_surface = eglCreateWindowSurface(s_display, config, (char*)"", NULL);
+    s_context = eglCreateContext(s_display, config, EGL_NO_CONTEXT, contextAttributeList);
+    eglMakeCurrent(s_display, s_surface, s_surface, s_context);
+}
+
+static void deinitEgl()
+{
+    eglMakeCurrent(s_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    eglDestroyContext(s_display, s_context);
+    s_context = NULL;
+    eglDestroySurface(s_display, s_surface);
+    s_surface = NULL;
+    eglTerminate(s_display);
+    s_display = NULL;
+}
+
+static void initRenderer()
+{
+    typedef struct
+    {
+        float position[3];
+        float texcoord[2];
+    } Vertex;
+
+    static const Vertex vertex_list[] =
+    {
+        { {  0.375f, -1.0f, 0.0f }, { 1.0f, 1.0f } },
+        { { -0.375f, -1.0f, 0.0f }, { 0.0f, 1.0f } },
+        { { -0.375f,  1.0f, 0.0f }, { 0.0f, 0.0f } },
+        { { -0.375f,  1.0f, 0.0f }, { 0.0f, 0.0f } },
+        { {  0.375f,  1.0f, 0.0f }, { 1.0f, 0.0f } },
+        { {  0.375f, -1.0f, 0.0f }, { 1.0f, 1.0f } }
+    };
+
+    GLint vsh = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vsh, 1, &vertexShader, NULL);
+    glCompileShader(vsh);
+
+    GLint fsh = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fsh, 1, &fragmentShader, NULL);
+    glCompileShader(fsh);
+
+    s_program = glCreateProgram();
+    glAttachShader(s_program, vsh);
+    glAttachShader(s_program, fsh);
+    glLinkProgram(s_program);
+
+    glDeleteShader(vsh);
+    glDeleteShader(fsh);
+
+    glGenVertexArrays(1, &s_vao);
+    glBindVertexArray(s_vao);
+
+    glGenBuffers(1, &s_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, s_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertex_list), vertex_list, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, position));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, texcoord));
+    glEnableVertexAttribArray(1);
+
+    glGenTextures(1, &s_tex);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, s_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+    glUseProgram(s_program);
+    loc_tex_diffuse = glGetUniformLocation(s_program, "tex_diffuse");
+    glUniform1i(loc_tex_diffuse, 0);
+}
+
+static void deinitRenderer()
+{
+    glDeleteTextures(1, &s_tex);
+    glDeleteBuffers(1, &s_vbo);
+    glDeleteVertexArrays(1, &s_vao);
+    glDeleteProgram(s_program);
 }
 
 void fillAudioBuffer() {
@@ -270,7 +386,9 @@ int main(int argc, char **argv)
 
     consoleClear();
     fclose(stdout);
-    gfxConfigureResolution(682, 384);
+    initEgl();
+    gladLoadGL();
+    initRenderer();
 
     Thread frameThread;
     threadCreate(&frameThread, advFrame, NULL, 0x80000, 0x30, 1);
@@ -290,7 +408,6 @@ int main(int argc, char **argv)
     threadCreate(&audioThread, playAudio, NULL, 0x80000, 0x30, 0);
     threadStart(&audioThread);
 
-    u32 width, height;
     HidControllerKeys keys[] = { KEY_A, KEY_B, KEY_MINUS, KEY_PLUS, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ZR, KEY_ZL, KEY_X, KEY_Y };
     while (true)
     {
@@ -332,21 +449,19 @@ int main(int argc, char **argv)
             NDS::ReleaseScreen();
         }
 
-        u32* src = GPU::Framebuffer;
-        u32* dst = (u32*)gfxGetFramebuffer(&width, &height);
         if (optionValues[2] == "1")
             mutexLock(&mutex);
-        for (int x = 0; x < 256; x++)
-            for (int y = 0; y < 384; y++)
-                dst[gfxGetFramebufferDisplayOffset(x + 213, y)] = swapRedBlue(src[(y * 256) + x]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 384, 0, GL_BGRA, GL_UNSIGNED_BYTE, GPU::Framebuffer);
         if (optionValues[2] == "1")
             mutexUnlock(&mutex);
-        gfxFlushBuffers();
-        gfxSwapBuffers();
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        eglSwapBuffers(s_display, s_surface);
     }
 
     NDS::DeInit();
-    gfxExit();
     audoutExit();
+    deinitRenderer();
+    deinitEgl();
+    gfxExit();
     return 0;
 }

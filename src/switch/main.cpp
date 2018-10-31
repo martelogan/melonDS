@@ -41,18 +41,21 @@
 #include "../SPU.h"
 #include "../version.h"
 
-std::vector<std::string> optionDisplay = { "Boot game directly", "Threaded 3D renderer" };
-std::vector<std::string> optionEntries = { "DirectBoot", "Threaded3D" };
-std::vector<std::string> optionValues = { "1", "1" };
+using namespace std;
+
+vector<string> optionDisplay = { "Boot game directly", "Threaded 3D renderer", "Screen rotation", "Screen layout" };
+vector<string> optionEntries = { "DirectBoot", "Threaded3D", "ScreenRotation", "ScreenLayout" };
+vector<vector<string>> optionValuesDisplay = { { "Off", "On " }, { "Off", "On " }, { "0  ", "90 ", "180", "270" }, { "Natural   ", "Vertical  ", "Horizontal" } };
+vector<unsigned int> optionValues = { 1, 1, 0, 0 };
 u8* bufferData;
 AudioOutBuffer* releasedBuffer;
 AudioOutBuffer buffer;
 u32* framebuffer;
+unsigned int touchBoundLeft, touchBoundRight, touchBoundTop, touchBoundBottom;
 static EGLDisplay s_display;
 static EGLContext s_context;
 static EGLSurface s_surface;
-static GLuint s_program, s_vao, s_vbo, s_tex;
-static GLint loc_tex_diffuse;
+static GLuint s_program, s_vao, s_vbo;
 static Mutex mutex;
 
 static const char* const vertexShader =
@@ -111,21 +114,88 @@ static void deinitEgl()
 
 static void initRenderer()
 {
+    float width, height, offsetTopX, offsetBotX, offsetTopY, offsetBotY;
+    if (optionValues[3] == 0)
+        optionValues[3] = (optionValues[2] % 2 == 0) ? 1 : 2;
+    if (optionValues[3] == 1)
+    {
+        height = 1.0f;
+        if (optionValues[2] % 2 == 0)
+            width = height * 0.75;
+        else
+            width = height * 0.421875;
+        offsetTopX = offsetBotX = -width / 2;
+        offsetTopY = height;
+        offsetBotY = 0.0f;
+    }
+    else
+    {
+        if (optionValues[2] % 2 == 0)
+        {
+            width = 1.0f;
+            height = width / 0.75;
+        }
+        else
+        {
+            height = 2.0f;
+            width = height * 0.421875;
+        }
+        offsetTopX = -width;
+        offsetBotX = 0.0f;
+        offsetTopY = offsetBotY = height / 2;
+    }
+
     typedef struct
     {
         float position[3];
         float texcoord[2];
     } Vertex;
 
-    static const Vertex vertex_list[] =
+    static Vertex screenLayout[] =
     {
-        { {  0.375f, -1.0f, 0.0f }, { 1.0f, 1.0f } },
-        { { -0.375f, -1.0f, 0.0f }, { 0.0f, 1.0f } },
-        { { -0.375f,  1.0f, 0.0f }, { 0.0f, 0.0f } },
-        { { -0.375f,  1.0f, 0.0f }, { 0.0f, 0.0f } },
-        { {  0.375f,  1.0f, 0.0f }, { 1.0f, 0.0f } },
-        { {  0.375f, -1.0f, 0.0f }, { 1.0f, 1.0f } }
+        { { offsetTopX + width, offsetTopY - height, 0.0f }, { 1.0f, 1.0f } },
+        { { offsetTopX,         offsetTopY - height, 0.0f }, { 0.0f, 1.0f } },
+        { { offsetTopX,         offsetTopY,          0.0f }, { 0.0f, 0.0f } },
+        { { offsetTopX,         offsetTopY,          0.0f }, { 0.0f, 0.0f } },
+        { { offsetTopX + width, offsetTopY,          0.0f }, { 1.0f, 0.0f } },
+        { { offsetTopX + width, offsetTopY - height, 0.0f }, { 1.0f, 1.0f } },
+
+        { { offsetBotX + width, offsetBotY - height, 0.0f }, { 1.0f, 1.0f } },
+        { { offsetBotX,         offsetBotY - height, 0.0f }, { 0.0f, 1.0f } },
+        { { offsetBotX,         offsetBotY,          0.0f }, { 0.0f, 0.0f } },
+        { { offsetBotX,         offsetBotY,          0.0f }, { 0.0f, 0.0f } },
+        { { offsetBotX + width, offsetBotY,          0.0f }, { 1.0f, 0.0f } },
+        { { offsetBotX + width, offsetBotY - height, 0.0f }, { 1.0f, 1.0f } },
     };
+
+    if (optionValues[2] == 1 || optionValues[2] == 2)
+    {
+        Vertex* copy = (Vertex*)memalign(0x1000, sizeof(screenLayout));
+        memcpy(copy, screenLayout, sizeof(screenLayout));
+        memcpy(screenLayout, &copy[6], sizeof(screenLayout) / 2);
+        memcpy(&screenLayout[6], copy, sizeof(screenLayout) / 2);
+    }
+
+    touchBoundLeft = (screenLayout[8].position[0] + 1) * 640;
+    touchBoundRight = (screenLayout[6].position[0] + 1) * 640;
+    touchBoundTop = (-screenLayout[8].position[1] + 1) * 360;
+    touchBoundBottom = (-screenLayout[6].position[1] + 1) * 360;
+
+    for (unsigned int i = 0; i < optionValues[2]; i++)
+    {
+        for (int j = 0; j < 2; j++)
+        {
+            for (int k = 0; k < 12; k += 6)
+            {
+                screenLayout[k].position[j] = screenLayout[k + 1].position[j];
+                screenLayout[k + 1].position[j] = screenLayout[k + 2].position[j];
+                screenLayout[k + 2].position[j] = screenLayout[k + 4].position[j];
+                screenLayout[k + 3].position[j] = screenLayout[k + 4].position[j];
+                screenLayout[k + 4].position[j] = screenLayout[k + 5].position[j];
+                screenLayout[k + 5].position[j] = screenLayout[k].position[j];
+            }
+        }
+    }
 
     GLint vsh = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vsh, 1, &vertexShader, NULL);
@@ -148,26 +218,21 @@ static void initRenderer()
 
     glGenBuffers(1, &s_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, s_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertex_list), vertex_list, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(screenLayout), screenLayout, GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, position));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, texcoord));
     glEnableVertexAttribArray(1);
 
-    glGenTextures(1, &s_tex);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, s_tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
     glUseProgram(s_program);
-    loc_tex_diffuse = glGetUniformLocation(s_program, "tex_diffuse");
-    glUniform1i(loc_tex_diffuse, 0);
 }
 
 static void deinitRenderer()
 {
-    glDeleteTextures(1, &s_tex);
     glDeleteBuffers(1, &s_vbo);
     glDeleteVertexArrays(1, &s_vao);
     glDeleteProgram(s_program);
@@ -235,38 +300,38 @@ int main(int argc, char **argv)
     consoleInit(NULL);
 
     bool options = false;
-    std::string romPath = "sdmc:/";
+    string romPath = "sdmc:/";
 
-    std::fstream config;
-    config.open("melonds.ini", std::ios::in);
-    std::string line;
+    fstream config;
+    config.open("melonds.ini", ios::in);
+    string line;
     while (getline(config, line))
     {
-        std::vector<std::string>::iterator iter = std::find(optionEntries.begin(), optionEntries.end(), line.substr(0, line.find("=")));
+        vector<string>::iterator iter = find(optionEntries.begin(), optionEntries.end(), line.substr(0, line.find("=")));
         if (iter != optionEntries.end())
-            optionValues[iter - optionEntries.begin()] = line.substr(line.find("=") + 1);
+            optionValues[iter - optionEntries.begin()] = stoi(line.substr(line.find("=") + 1));
     }
     config.close();
 
-    while (romPath.find(".nds", (romPath.length() - 4)) == std::string::npos)
+    while (romPath.find(".nds", (romPath.length() - 4)) == string::npos)
     {
         consoleClear();
         printf("melonDS " MELONDS_VERSION "\n");
         printf(MELONDS_URL);
 
         unsigned int selection = 0;
-        std::vector<std::string> files;
+        vector<string> files;
 
         DIR* directory = opendir(romPath.c_str());
         dirent* entry;
         while ((entry = readdir(directory)))
         {
-            std::string name = entry->d_name;
-            if (entry->d_type == DT_DIR || name.find(".nds", (name.length() - 4)) != std::string::npos)
+            string name = entry->d_name;
+            if (entry->d_type == DT_DIR || name.find(".nds", (name.length() - 4)) != string::npos)
                 files.push_back(name);
         }
         closedir(directory);
-        std::sort(files.begin(), files.end());
+        sort(files.begin(), files.end());
 
         while (true)
         {
@@ -277,7 +342,9 @@ int main(int argc, char **argv)
             {
                 if (kDown & KEY_A)
                 {
-                    optionValues[selection] = optionValues[selection] == "0" ? "1" : "0";
+                    optionValues[selection]++;
+                    if (optionValues[selection] > optionValuesDisplay[selection].size() - 1)
+                        optionValues[selection] = 0;
                 }
                 else if (kDown & KEY_UP && selection > 0)
                 {
@@ -289,9 +356,9 @@ int main(int argc, char **argv)
                 }
                 else if (kDown & KEY_X)
                 {
-                    config.open("melonds.ini", std::ios::out);
+                    config.open("melonds.ini", ios::out);
                     for (unsigned int i = 0; i < optionDisplay.size(); i++)
-                        config << optionEntries[i] + "=" + optionValues[i] + "\n";
+                        config << optionEntries[i] + "=" + to_string(optionValues[i]) + "\n";
                     config.close();
 
                     options = false;
@@ -303,12 +370,12 @@ int main(int argc, char **argv)
                     if (i == selection)
                     {
                         printf(CONSOLE_WHITE"\x1b[%d;1H%s", i + 4, optionDisplay[i].c_str());
-                        printf(CONSOLE_WHITE"\x1b[%d;30H%s", i + 4, optionValues[i] == "0" ? "Off" : "On ");
+                        printf(CONSOLE_WHITE"\x1b[%d;30H%s", i + 4, optionValuesDisplay[i][optionValues[i]].c_str());
                     }
                     else
                     {
                         printf(CONSOLE_RESET"\x1b[%d;1H%s", i + 4, optionDisplay[i].c_str());
-                        printf(CONSOLE_RESET"\x1b[%d;30H%s", i + 4, optionValues[i] == "0" ? "Off" : "On ");
+                        printf(CONSOLE_RESET"\x1b[%d;30H%s", i + 4, optionValuesDisplay[i][optionValues[i]].c_str());
                     }
                 }
                 printf(CONSOLE_RESET"\x1b[45;1HPress X to return to the file browser.");
@@ -373,8 +440,8 @@ int main(int argc, char **argv)
 
     NDS::Init();
 
-    std::string sramPath = romPath.substr(0, romPath.rfind(".")) + ".sav";
-    std::string statePath = romPath.substr(0, romPath.rfind(".")) + ".mln";
+    string sramPath = romPath.substr(0, romPath.rfind(".")) + ".sav";
+    string statePath = romPath.substr(0, romPath.rfind(".")) + ".mln";
 
     if (!NDS::LoadROM(romPath.c_str(), sramPath.c_str(), Config::DirectBoot))
     {
@@ -442,10 +509,31 @@ int main(int argc, char **argv)
             touchPosition touch;
             hidTouchRead(&touch, 0);
 
-            if (touch.px > 400 && touch.px < 880 && touch.py > 360)
+            if (touch.px > touchBoundLeft && touch.px < touchBoundRight && touch.py > touchBoundTop && touch.py < touchBoundBottom)
             {
+                int x, y;
                 NDS::PressKey(16 + 6);
-                NDS::TouchScreen((touch.px - 400) / 1.875, (touch.py - 360) / 1.875);
+                if (optionValues[2] == 0)
+                {
+                    x = (touch.px - touchBoundLeft) * 256.0f / (touchBoundRight - touchBoundLeft);
+                    y = (touch.py - touchBoundTop) * 256.0f / (touchBoundRight - touchBoundLeft);
+                }
+                else if (optionValues[2] == 1)
+                {
+                    x = (touch.py - touchBoundTop) * 192.0f / (touchBoundRight - touchBoundLeft);
+                    y = 192 - (touch.px - touchBoundLeft) * 192.0f / (touchBoundRight - touchBoundLeft);
+                }
+                else if (optionValues[2] == 2)
+                {
+                    x = (touch.px - touchBoundLeft) * -256.0f / (touchBoundRight - touchBoundLeft);
+                    y = 192 - (touch.py - touchBoundTop) * 256.0f / (touchBoundRight - touchBoundLeft);
+                }
+                else
+                {
+                    x = (touch.py - touchBoundTop) * -192.0f / (touchBoundRight - touchBoundLeft);
+                    y = (touch.px - touchBoundLeft) * 192.0f / (touchBoundRight - touchBoundLeft);
+                }
+                NDS::TouchScreen(x, y);
             }
         }
         else
@@ -453,9 +541,10 @@ int main(int argc, char **argv)
             NDS::ReleaseKey(16 + 6);
             NDS::ReleaseScreen();
         }
-
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 384, 0, GL_BGRA, GL_UNSIGNED_BYTE, framebuffer);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, 256, 192, 0, GL_BGRA, GL_UNSIGNED_BYTE, framebuffer);
         glDrawArrays(GL_TRIANGLES, 0, 6);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, 256, 192, 0, GL_BGRA, GL_UNSIGNED_BYTE, &framebuffer[256 * 192]);
+        glDrawArrays(GL_TRIANGLES, 6, 12);
         eglSwapBuffers(s_display, s_surface);
     }
 

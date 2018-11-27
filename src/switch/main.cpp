@@ -304,7 +304,6 @@ void PlayAudio(void* args)
 
 int main(int argc, char** argv)
 {
-    gfxInitDefault();
     consoleInit(NULL);
 
     bool options = false;
@@ -426,8 +425,7 @@ int main(int argc, char** argv)
                 printf(CONSOLE_RESET"\x1b[45;1HPress X to open the options menu.");
             }
 
-            gfxFlushBuffers();
-            gfxSwapBuffers();
+            consoleUpdate(NULL);
         }
     }
 
@@ -443,10 +441,7 @@ int main(int argc, char** argv)
         printf("Dump the files from your DS and place them in sdmc:/switch/melonds");
 
         while (true)
-        {
-            gfxFlushBuffers();
-            gfxSwapBuffers();
-        }
+            consoleUpdate(NULL);
     }
 
     NDS::Init();
@@ -460,10 +455,7 @@ int main(int argc, char** argv)
         printf("Failed to load ROM. Make sure the file can be accessed.");
 
         while (true)
-        {
-            gfxFlushBuffers();
-            gfxSwapBuffers();
-        }
+            consoleUpdate(NULL);
     }
 
     consoleClear();
@@ -566,6 +558,6 @@ int main(int argc, char** argv)
     audoutExit();
     DeinitRenderer();
     DeinitEGL();
-    gfxExit();
+    consoleExit(NULL);
     return 0;
 }

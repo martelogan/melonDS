@@ -43,10 +43,17 @@
 
 using namespace std;
 
-vector<string> OptionDisplay = { "Boot game directly", "Threaded 3D renderer", "Screen rotation", "Screen layout" };
-vector<string> OptionEntries = { "DirectBoot", "Threaded3D", "ScreenRotation", "ScreenLayout" };
-vector<vector<string>> OptionValuesDisplay = { { "Off", "On " }, { "Off", "On " }, { "0  ", "90 ", "180", "270" }, { "Natural   ", "Vertical  ", "Horizontal" } };
-vector<unsigned int> OptionValues = { 1, 1, 0, 0 };
+vector<string> OptionEntries = { "DirectBoot", "Threaded3D", "ScreenRotation", "ScreenLayout", "SwitchOverclock" };
+vector<string> OptionDisplay = { "Boot game directly", "Threaded 3D renderer", "Screen rotation", "Screen layout", "Switch overclock" };
+vector<unsigned int> OptionValues = { 1, 1, 0, 0, 0 };
+vector<vector<string>> OptionValuesDisplay =
+{
+    { "Off", "On " },
+    { "Off", "On " },
+    { "0  ", "90 ", "180", "270" },
+    { "Natural   ", "Vertical  ", "Horizontal" },
+    { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" }
+};
 
 u8* BufferData;
 AudioOutBuffer* ReleasedBuffer;
@@ -305,6 +312,7 @@ void PlayAudio(void* args)
 int main(int argc, char** argv)
 {
     consoleInit(NULL);
+    pcvInitialize();
 
     bool options = false;
     string rompath = "sdmc:/";
@@ -458,6 +466,15 @@ int main(int argc, char** argv)
             consoleUpdate(NULL);
     }
 
+    if (OptionValues[4] == 0)
+        pcvSetClockRate(PcvModule_Cpu, 1020000000);
+    else if (OptionValues[4] == 1)
+        pcvSetClockRate(PcvModule_Cpu, 1224000000);
+    else if (OptionValues[4] == 2)
+        pcvSetClockRate(PcvModule_Cpu, 1581000000);
+    else
+        pcvSetClockRate(PcvModule_Cpu, 1785000000);
+
     consoleClear();
     fclose(stdout);
     InitEGL();
@@ -558,6 +575,7 @@ int main(int argc, char** argv)
     audoutExit();
     DeinitRenderer();
     DeinitEGL();
+    pcvExit();
     consoleExit(NULL);
     return 0;
 }

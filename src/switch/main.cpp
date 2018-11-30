@@ -17,6 +17,7 @@
 */
 
 #include <algorithm>
+#include <chrono>
 #include <dirent.h>
 #include <malloc.h>
 #include <fstream>
@@ -293,10 +294,14 @@ void AdvFrame(void* args)
 {
     while (true)
     {
+        chrono::steady_clock::time_point start = chrono::steady_clock::now();
+
         mutexLock(&EmuMutex);
         NDS::RunFrame();
         mutexUnlock(&EmuMutex);
         memcpy(Framebuffer, GPU::Framebuffer, 256 * 384 * 4);
+
+        while (chrono::duration_cast<chrono::duration<double>>(chrono::steady_clock::now() - start).count() < (float)1 / 60);
     }
 }
 

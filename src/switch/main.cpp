@@ -19,7 +19,6 @@
 #include <algorithm>
 #include <chrono>
 #include <dirent.h>
-#include <malloc.h>
 #include <stdio.h>
 #include <string.h>
 #include <switch.h>
@@ -348,10 +347,11 @@ void SetScreenLayout()
 
     if (Config::ScreenRotation == 1 || Config::ScreenRotation == 2)
     {
-        Vertex *copy = (Vertex*)malloc(sizeof(screens));
+        Vertex *copy = new Vertex[sizeof(screens) / sizeof(Vertex)];
         memcpy(copy, screens, sizeof(screens));
         memcpy(screens, &copy[6], sizeof(screens) / 2);
         memcpy(&screens[6], copy, sizeof(screens) / 2);
+        delete copy;
     }
 
     TouchBoundLeft = (screens[8].position[0] + 1) * 640;
@@ -497,7 +497,7 @@ int main(int argc, char **argv)
     audoutInitialize();
     audoutStartAudioOut();
 
-    BufferData = (u8*)memalign(0x1000, (1440 * 2 * 2 + 0xfff) & ~0xfff);
+    BufferData = new u8[(1440 * 2 * 2 + 0xfff) & ~0xfff];
     AudioBuffer.next = NULL;
     AudioBuffer.buffer = BufferData;
     AudioBuffer.buffer_size = (1440 * 2 * 2 + 0xfff) & ~0xfff;
@@ -508,7 +508,7 @@ int main(int argc, char **argv)
     threadCreate(&audio, PlayAudio, NULL, 0x80000, 0x30, 0);
     threadStart(&audio);
 
-    Framebuffer = (u32*)malloc(256 * 384 * 4);
+    Framebuffer = new u32[256 * 384];
 
     HidControllerKeys keys[] = { KEY_A, KEY_B, KEY_MINUS, KEY_PLUS, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ZR, KEY_ZL, KEY_X, KEY_Y };
 

@@ -518,9 +518,12 @@ int main(int argc, char** argv)
         if (pressed & KEY_L || pressed & KEY_R)
         {
             Savestate* state = new Savestate(const_cast<char*>(statepath.c_str()), pressed & KEY_L);
-            mutexLock(&EmuMutex);
-            NDS::DoSavestate(state);
-            mutexUnlock(&EmuMutex);
+            if (!state->Error)
+            {
+                mutexLock(&EmuMutex);
+                NDS::DoSavestate(state);
+                mutexUnlock(&EmuMutex);
+            }
             delete state;
         }
 

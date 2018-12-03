@@ -48,6 +48,10 @@ extern int SocketBindAnyAddr;
 
 extern int SavestateRelocSRAM;
 
+#ifdef __SWITCH__
+extern int SwitchOverclock;
+#endif
+
 }
 
 #endif // CONFIG_H

@@ -20,8 +20,6 @@
 #include <chrono>
 #include <dirent.h>
 #include <malloc.h>
-#include <fstream>
-#include <iostream>
 #include <stdio.h>
 #include <string.h>
 #include <switch.h>
@@ -44,7 +42,7 @@
 
 using namespace std;
 
-vector<string> OptionDisplay =
+vector<const char*> OptionDisplay =
 {
     "Boot game directly",
     "Threaded 3D renderer",
@@ -53,16 +51,7 @@ vector<string> OptionDisplay =
     "Switch overclock"
 };
 
-vector<string> OptionEntries =
-{
-    "DirectBoot",
-    "Threaded3D",
-    "ScreenRotation",
-    "ScreenLayout",
-    "SwitchOverclock"
-};
-
-vector<vector<string>> OptionValuesDisplay =
+vector<vector<const char*>> OptionValuesDisplay =
 {
     { "Off", "On " },
     { "Off", "On " },
@@ -71,7 +60,14 @@ vector<vector<string>> OptionValuesDisplay =
     { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" }
 };
 
-vector<unsigned int> OptionValues = { 1, 1, 0, 0, 0 };
+vector<int*> OptionValues =
+{
+    &Config::DirectBoot,
+    &Config::Threaded3D,
+    &Config::ScreenRotation,
+    &Config::ScreenLayout,
+    &Config::SwitchOverclock
+};
 
 u8 *BufferData;
 AudioOutBuffer AudioBuffer, *ReleasedBuffer;
@@ -187,17 +183,6 @@ string Menu()
     string rompath = "sdmc:/";
     bool options = false;
 
-    fstream config;
-    config.open("melonds.ini", ios::in);
-    string line;
-    while (getline(config, line))
-    {
-        vector<string>::iterator iter = find(OptionEntries.begin(), OptionEntries.end(), line.substr(0, line.find("=")));
-        if (iter != OptionEntries.end())
-            OptionValues[iter - OptionEntries.begin()] = stoi(line.substr(line.find("=") + 1));
-    }
-    config.close();
-
     while (rompath.find(".nds", (rompath.length() - 4)) == string::npos)
     {
         consoleClear();
@@ -227,9 +212,9 @@ string Menu()
             {
                 if (pressed & KEY_A)
                 {
-                    OptionValues[selection]++;
-                    if (OptionValues[selection] > OptionValuesDisplay[selection].size() - 1)
-                        OptionValues[selection] = 0;
+                    (*OptionValues[selection])++;
+                    if (*OptionValues[selection] >= (int)OptionValuesDisplay[selection].size())
+                        *OptionValues[selection] = 0;
                 }
                 else if (pressed & KEY_UP && selection > 0)
                 {
@@ -241,11 +226,7 @@ string Menu()
                 }
                 else if (pressed & KEY_X)
                 {
-                    config.open("melonds.ini", ios::out);
-                    for (unsigned int i = 0; i < OptionDisplay.size(); i++)
-                        config << OptionEntries[i] + "=" + to_string(OptionValues[i]) + "\n";
-                    config.close();
-
+                    Config::Save();
                     options = false;
                     break;
                 }
@@ -254,13 +235,13 @@ string Menu()
                 {
                     if (i == selection)
                     {
-                        printf(CONSOLE_WHITE"\x1b[%d;1H%s", i + 4, OptionDisplay[i].c_str());
-                        printf(CONSOLE_WHITE"\x1b[%d;30H%s", i + 4, OptionValuesDisplay[i][OptionValues[i]].c_str());
+                        printf(CONSOLE_WHITE"\x1b[%d;1H%s", i + 4, OptionDisplay[i]);
+                        printf(CONSOLE_WHITE"\x1b[%d;30H%s", i + 4, OptionValuesDisplay[i][*OptionValues[i]]);
                     }
                     else
                     {
-                        printf(CONSOLE_RESET"\x1b[%d;1H%s", i + 4, OptionDisplay[i].c_str());
-                        printf(CONSOLE_RESET"\x1b[%d;30H%s", i + 4, OptionValuesDisplay[i][OptionValues[i]].c_str());
+                        printf(CONSOLE_RESET"\x1b[%d;1H%s", i + 4, OptionDisplay[i]);
+                        printf(CONSOLE_RESET"\x1b[%d;30H%s", i + 4, OptionValuesDisplay[i][*OptionValues[i]]);
                     }
                 }
 
@@ -288,6 +269,7 @@ string Menu()
                 }
                 else if (pressed & KEY_X)
                 {
+                    Config::Load();
                     options = true;
                     break;
                 }
@@ -314,13 +296,13 @@ void SetScreenLayout()
 {
     float width, height, offset_topX, offset_botX, offset_topY, offset_botY;
 
-    if (OptionValues[3] == 0)
-        OptionValues[3] = (OptionValues[2] % 2 == 0) ? 1 : 2;
+    if (Config::ScreenLayout == 0)
+        Config::ScreenLayout = (Config::ScreenRotation % 2 == 0) ? 1 : 2;
 
-    if (OptionValues[3] == 1)
+    if (Config::ScreenLayout == 1)
     {
         height = 1.0f;
-        if (OptionValues[2] % 2 == 0)
+        if (Config::ScreenRotation % 2 == 0)
             width = height * 0.75;
         else
             width = height * 0.421875;
@@ -331,7 +313,7 @@ void SetScreenLayout()
     }
     else
     {
-        if (OptionValues[2] % 2 == 0)
+        if (Config::ScreenRotation % 2 == 0)
         {
             width = 1.0f;
             height = width / 0.75;
@@ -364,7 +346,7 @@ void SetScreenLayout()
         { { offset_botX + width, offset_botY - height, 0.0f }, { 1.0f, 1.0f } }
     };
 
-    if (OptionValues[2] == 1 || OptionValues[2] == 2)
+    if (Config::ScreenRotation == 1 || Config::ScreenRotation == 2)
     {
         Vertex *copy = (Vertex*)malloc(sizeof(screens));
         memcpy(copy, screens, sizeof(screens));
@@ -377,7 +359,7 @@ void SetScreenLayout()
     TouchBoundTop = (-screens[8].position[1] + 1) * 360;
     TouchBoundBottom = (-screens[6].position[1] + 1) * 360;
 
-    for (unsigned int i = 0; i < OptionValues[2]; i++)
+    for (int i = 0; i < Config::ScreenRotation; i++)
     {
         for (int j = 0; j < 2; j++)
         {
@@ -463,6 +445,10 @@ int main(int argc, char **argv)
 {
     consoleInit(NULL);
 
+    string rompath = Menu();
+    string srampath = rompath.substr(0, rompath.rfind(".")) + ".sav";
+    string statepath = rompath.substr(0, rompath.rfind(".")) + ".mln";
+
     Config::Load();
     if (!Config::HasConfigFile("bios7.bin") || !Config::HasConfigFile("bios9.bin") || !Config::HasConfigFile("firmware.bin"))
     {
@@ -477,10 +463,6 @@ int main(int argc, char **argv)
             consoleUpdate(NULL);
     }
 
-    string rompath = Menu();
-    string srampath = rompath.substr(0, rompath.rfind(".")) + ".sav";
-    string statepath = rompath.substr(0, rompath.rfind(".")) + ".mln";
-
     NDS::Init();
     if (!NDS::LoadROM(rompath.c_str(), srampath.c_str(), Config::DirectBoot))
     {
@@ -492,11 +474,11 @@ int main(int argc, char **argv)
     }
 
     pcvInitialize();
-    if (OptionValues[4] == 0)
+    if (Config::SwitchOverclock == 0)
         pcvSetClockRate(PcvModule_Cpu, 1020000000);
-    else if (OptionValues[4] == 1)
+    else if (Config::SwitchOverclock == 1)
         pcvSetClockRate(PcvModule_Cpu, 1224000000);
-    else if (OptionValues[4] == 2)
+    else if (Config::SwitchOverclock == 2)
         pcvSetClockRate(PcvModule_Cpu, 1581000000);
     else
         pcvSetClockRate(PcvModule_Cpu, 1785000000);
@@ -562,17 +544,17 @@ int main(int argc, char **argv)
             if (touch.px > TouchBoundLeft && touch.px < TouchBoundRight && touch.py > TouchBoundTop && touch.py < TouchBoundBottom)
             {
                 int x, y;
-                if (OptionValues[2] == 0)
+                if (Config::ScreenRotation == 0)
                 {
                     x = (touch.px - TouchBoundLeft) * 256.0f / (TouchBoundRight - TouchBoundLeft);
                     y = (touch.py - TouchBoundTop) * 256.0f / (TouchBoundRight - TouchBoundLeft);
                 }
-                else if (OptionValues[2] == 1)
+                else if (Config::ScreenRotation == 1)
                 {
                     x = (touch.py - TouchBoundTop) * 192.0f / (TouchBoundRight - TouchBoundLeft);
                     y = 192 - (touch.px - TouchBoundLeft) * 192.0f / (TouchBoundRight - TouchBoundLeft);
                 }
-                else if (OptionValues[2] == 2)
+                else if (Config::ScreenRotation == 2)
                 {
                     x = (touch.px - TouchBoundLeft) * -256.0f / (TouchBoundRight - TouchBoundLeft);
                     y = 192 - (touch.py - TouchBoundTop) * 256.0f / (TouchBoundRight - TouchBoundLeft);

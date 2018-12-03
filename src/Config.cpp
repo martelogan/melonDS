@@ -51,6 +51,10 @@ int SocketBindAnyAddr;
 
 int SavestateRelocSRAM;
 
+#ifdef __SWITCH__
+int SwitchOverclock;
+#endif
+
 typedef struct
 {
     char Name[16];
@@ -106,6 +110,10 @@ ConfigEntry ConfigFile[] =
     {"SockBindAnyAddr", 0, &SocketBindAnyAddr, 0, NULL, 0},
 
     {"SavStaRelocSRAM", 0, &SavestateRelocSRAM, 1, NULL, 0},
+
+#ifdef __SWITCH__
+    {"SwitchOverclock", 0, &SwitchOverclock, 0, NULL, 0},
+#endif
 
     {"", -1, NULL, 0, NULL, 0}
 };

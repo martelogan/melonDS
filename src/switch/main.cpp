@@ -449,6 +449,8 @@ int main(int argc, char **argv)
     string srampath = rompath.substr(0, rompath.rfind(".")) + ".sav";
     string statepath = rompath.substr(0, rompath.rfind(".")) + ".mln";
 
+    appletLockExit();
+
     Config::Load();
     if (!Config::HasConfigFile("bios7.bin") || !Config::HasConfigFile("bios9.bin") || !Config::HasConfigFile("firmware.bin"))
     {
@@ -459,7 +461,7 @@ int main(int argc, char **argv)
         printf("firmware.bin -- firmware image\n\n");
         printf("Dump the files from your DS and place them in sdmc:/switch/melonds");
 
-        while (true)
+        while (appletMainLoop())
             consoleUpdate(NULL);
     }
 
@@ -469,7 +471,7 @@ int main(int argc, char **argv)
         consoleClear();
         printf("Failed to load ROM. Make sure the file can be accessed.");
 
-        while (true)
+        while (appletMainLoop())
             consoleUpdate(NULL);
     }
 
@@ -510,7 +512,7 @@ int main(int argc, char **argv)
 
     HidControllerKeys keys[] = { KEY_A, KEY_B, KEY_MINUS, KEY_PLUS, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ZR, KEY_ZL, KEY_X, KEY_Y };
 
-    while (true)
+    while (appletMainLoop())
     {
         hidScanInput();
         u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
@@ -581,11 +583,11 @@ int main(int argc, char **argv)
         eglSwapBuffers(Display, Surface);
     }
 
-    NDS::DeInit();
     audoutExit();
     DeInitRenderer();
     pcvSetClockRate(PcvModule_Cpu, 1020000000);
     pcvExit();
     consoleExit(NULL);
+    appletUnlockExit();
     return 0;
 }

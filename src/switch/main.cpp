@@ -44,9 +44,24 @@
 
 using namespace std;
 
-vector<string> OptionEntries = { "DirectBoot", "Threaded3D", "ScreenRotation", "ScreenLayout", "SwitchOverclock" };
-vector<string> OptionDisplay = { "Boot game directly", "Threaded 3D renderer", "Screen rotation", "Screen layout", "Switch overclock" };
-vector<unsigned int> OptionValues = { 1, 1, 0, 0, 0 };
+vector<string> OptionDisplay =
+{
+    "Boot game directly",
+    "Threaded 3D renderer",
+    "Screen rotation",
+    "Screen layout",
+    "Switch overclock"
+};
+
+vector<string> OptionEntries =
+{
+    "DirectBoot",
+    "Threaded3D",
+    "ScreenRotation",
+    "ScreenLayout",
+    "SwitchOverclock"
+};
+
 vector<vector<string>> OptionValuesDisplay =
 {
     { "Off", "On " },
@@ -56,21 +71,28 @@ vector<vector<string>> OptionValuesDisplay =
     { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" }
 };
 
-u8* BufferData;
-AudioOutBuffer* ReleasedBuffer;
-AudioOutBuffer AudioBuffer;
+vector<unsigned int> OptionValues = { 1, 1, 0, 0, 0 };
 
-u32* Framebuffer;
+u8 *BufferData;
+AudioOutBuffer AudioBuffer, *ReleasedBuffer;
+
+u32 *Framebuffer;
 unsigned int TouchBoundLeft, TouchBoundRight, TouchBoundTop, TouchBoundBottom;
+
+Mutex EmuMutex;
 
 EGLDisplay Display;
 EGLContext Context;
 EGLSurface Surface;
-GLuint Program, VAO, VBO;
+GLuint Program, VertArrayObj, VertBufferObj;
 
-Mutex EmuMutex;
+typedef struct
+{
+    float position[3];
+    float texcoord[2];
+} Vertex;
 
-const char* const VertexShader =
+const char *VertexShader =
     "#version 330 core\n"
     "precision mediump float;"
 
@@ -84,7 +106,7 @@ const char* const VertexShader =
         "vtx_texcoord = in_texcoord;"
     "}";
 
-const char* const FragmentShader =
+const char *FragmentShader =
     "#version 330 core\n"
     "precision mediump float;"
 
@@ -97,7 +119,7 @@ const char* const FragmentShader =
         "fragcolor = texture(texdiffuse, vtx_texcoord);"
     "}";
 
-void InitEGL()
+void InitRenderer()
 {
     EGLConfig config;
     EGLint numconfigs;
@@ -110,130 +132,30 @@ void InitEGL()
     Surface = eglCreateWindowSurface(Display, config, (char*)"", NULL);
     Context = eglCreateContext(Display, config, EGL_NO_CONTEXT, attributelist);
     eglMakeCurrent(Display, Surface, Surface, Context);
-}
 
-void DeinitEGL()
-{
-    eglMakeCurrent(Display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    eglDestroyContext(Display, Context);
-    Context = NULL;
-    eglDestroySurface(Display, Surface);
-    Surface = NULL;
-    eglTerminate(Display);
-    Display = NULL;
-}
+    gladLoadGL();
 
-void InitRenderer()
-{
-    float width, height, offset_topX, offset_botX, offset_topY, offset_botY;
+    GLint vertshader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertshader, 1, &VertexShader, NULL);
+    glCompileShader(vertshader);
 
-    if (OptionValues[3] == 0)
-        OptionValues[3] = (OptionValues[2] % 2 == 0) ? 1 : 2;
-
-    if (OptionValues[3] == 1)
-    {
-        height = 1.0f;
-        if (OptionValues[2] % 2 == 0)
-            width = height * 0.75;
-        else
-            width = height * 0.421875;
-
-        offset_topX = offset_botX = -width / 2;
-        offset_topY = height;
-        offset_botY = 0.0f;
-    }
-    else
-    {
-        if (OptionValues[2] % 2 == 0)
-        {
-            width = 1.0f;
-            height = width / 0.75;
-        }
-        else
-        {
-            height = 2.0f;
-            width = height * 0.421875;
-        }
-
-        offset_topX = -width;
-        offset_botX = 0.0f;
-        offset_topY = offset_botY = height / 2;
-    }
-
-    typedef struct
-    {
-        float position[3];
-        float texcoord[2];
-    } Vertex;
-
-    Vertex screens[] =
-    {
-        { { offset_topX + width, offset_topY - height, 0.0f }, { 1.0f, 1.0f } },
-        { { offset_topX,         offset_topY - height, 0.0f }, { 0.0f, 1.0f } },
-        { { offset_topX,         offset_topY,          0.0f }, { 0.0f, 0.0f } },
-        { { offset_topX,         offset_topY,          0.0f }, { 0.0f, 0.0f } },
-        { { offset_topX + width, offset_topY,          0.0f }, { 1.0f, 0.0f } },
-        { { offset_topX + width, offset_topY - height, 0.0f }, { 1.0f, 1.0f } },
-
-        { { offset_botX + width, offset_botY - height, 0.0f }, { 1.0f, 1.0f } },
-        { { offset_botX,         offset_botY - height, 0.0f }, { 0.0f, 1.0f } },
-        { { offset_botX,         offset_botY,          0.0f }, { 0.0f, 0.0f } },
-        { { offset_botX,         offset_botY,          0.0f }, { 0.0f, 0.0f } },
-        { { offset_botX + width, offset_botY,          0.0f }, { 1.0f, 0.0f } },
-        { { offset_botX + width, offset_botY - height, 0.0f }, { 1.0f, 1.0f } }
-    };
-
-    if (OptionValues[2] == 1 || OptionValues[2] == 2)
-    {
-        Vertex* copy = (Vertex*)malloc(sizeof(screens));
-        memcpy(copy, screens, sizeof(screens));
-        memcpy(screens, &copy[6], sizeof(screens) / 2);
-        memcpy(&screens[6], copy, sizeof(screens) / 2);
-    }
-
-    TouchBoundLeft = (screens[8].position[0] + 1) * 640;
-    TouchBoundRight = (screens[6].position[0] + 1) * 640;
-    TouchBoundTop = (-screens[8].position[1] + 1) * 360;
-    TouchBoundBottom = (-screens[6].position[1] + 1) * 360;
-
-    for (unsigned int i = 0; i < OptionValues[2]; i++)
-    {
-        for (int j = 0; j < 2; j++)
-        {
-            for (int k = 0; k < 12; k += 6)
-            {
-                screens[k].position[j] = screens[k + 1].position[j];
-                screens[k + 1].position[j] = screens[k + 2].position[j];
-                screens[k + 2].position[j] = screens[k + 4].position[j];
-                screens[k + 3].position[j] = screens[k + 4].position[j];
-                screens[k + 4].position[j] = screens[k + 5].position[j];
-                screens[k + 5].position[j] = screens[k].position[j];
-            }
-        }
-    }
-
-    GLint vsh = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vsh, 1, &VertexShader, NULL);
-    glCompileShader(vsh);
-
-    GLint fsh = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fsh, 1, &FragmentShader, NULL);
-    glCompileShader(fsh);
+    GLint fragshader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragshader, 1, &FragmentShader, NULL);
+    glCompileShader(fragshader);
 
     Program = glCreateProgram();
-    glAttachShader(Program, vsh);
-    glAttachShader(Program, fsh);
+    glAttachShader(Program, vertshader);
+    glAttachShader(Program, fragshader);
     glLinkProgram(Program);
 
-    glDeleteShader(vsh);
-    glDeleteShader(fsh);
+    glDeleteShader(vertshader);
+    glDeleteShader(fragshader);
 
-    glGenVertexArrays(1, &VAO);
-    glBindVertexArray(VAO);
+    glGenVertexArrays(1, &VertArrayObj);
+    glBindVertexArray(VertArrayObj);
 
-    glGenBuffers(1, &VBO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(screens), screens, GL_STATIC_DRAW);
+    glGenBuffers(1, &VertBufferObj);
+    glBindBuffer(GL_ARRAY_BUFFER, VertBufferObj);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, position));
     glEnableVertexAttribArray(0);
@@ -245,83 +167,25 @@ void InitRenderer()
     glUseProgram(Program);
 }
 
-void DeinitRenderer()
+void DeInitRenderer()
 {
-    glDeleteBuffers(1, &VBO);
-    glDeleteVertexArrays(1, &VAO);
+    glDeleteBuffers(1, &VertBufferObj);
+    glDeleteVertexArrays(1, &VertArrayObj);
     glDeleteProgram(Program);
+
+    eglMakeCurrent(Display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    eglDestroyContext(Display, Context);
+    Context = NULL;
+    eglDestroySurface(Display, Surface);
+    Surface = NULL;
+    eglTerminate(Display);
+    Display = NULL;
 }
 
-void FillAudioBuffer()
+string Menu()
 {
-    s16 buf_in[984 * 2];
-    s16* buf_out = (s16*)BufferData;
-
-    int num_in = SPU::ReadOutput(buf_in, 984);
-    int num_out = 1440;
-
-    int margin = 6;
-    if (num_in < 984 - margin)
-    {
-        int last = num_in - 1;
-        if (last < 0)
-            last = 0;
-
-        for (int i = num_in; i < 984 - margin; i++)
-            ((u32*)buf_in)[i] = ((u32*)buf_in)[last];
-
-        num_in = 984 - margin;
-    }
-
-    float res_incr = (float)num_in / num_out;
-    float res_timer = 0;
-    int res_pos = 0;
-
-    for (int i = 0; i < 1440; i++)
-    {
-        buf_out[i * 2] = buf_in[res_pos * 2];
-        buf_out[i * 2 + 1] = buf_in[res_pos * 2 + 1];
-
-        res_timer += res_incr;
-        while (res_timer >= 1)
-        {
-            res_timer--;
-            res_pos++;
-        }
-    }
-}
-
-void AdvFrame(void* args)
-{
-    while (true)
-    {
-        chrono::steady_clock::time_point start = chrono::steady_clock::now();
-
-        mutexLock(&EmuMutex);
-        NDS::RunFrame();
-        mutexUnlock(&EmuMutex);
-        memcpy(Framebuffer, GPU::Framebuffer, 256 * 384 * 4);
-
-        while (chrono::duration_cast<chrono::duration<double>>(chrono::steady_clock::now() - start).count() < (float)1 / 60);
-    }
-}
-
-void PlayAudio(void* args)
-{
-    while (true)
-    {
-        FillAudioBuffer();
-        audoutPlayBuffer(&AudioBuffer, &ReleasedBuffer);
-    }
-}
-
-int main(int argc, char** argv)
-{
-    consoleInit(NULL);
-    pcvInitialize();
-
-    bool options = false;
     string rompath = "sdmc:/";
+    bool options = false;
 
     fstream config;
     config.open("melonds.ini", ios::in);
@@ -343,8 +207,8 @@ int main(int argc, char** argv)
         unsigned int selection = 0;
         vector<string> files;
 
-        DIR* dir = opendir(rompath.c_str());
-        dirent* entry;
+        DIR *dir = opendir(rompath.c_str());
+        dirent *entry;
         while ((entry = readdir(dir)))
         {
             string name = entry->d_name;
@@ -443,8 +307,163 @@ int main(int argc, char** argv)
         }
     }
 
-    Config::Load();
+    return rompath;
+}
 
+void SetScreenLayout()
+{
+    float width, height, offset_topX, offset_botX, offset_topY, offset_botY;
+
+    if (OptionValues[3] == 0)
+        OptionValues[3] = (OptionValues[2] % 2 == 0) ? 1 : 2;
+
+    if (OptionValues[3] == 1)
+    {
+        height = 1.0f;
+        if (OptionValues[2] % 2 == 0)
+            width = height * 0.75;
+        else
+            width = height * 0.421875;
+
+        offset_topX = offset_botX = -width / 2;
+        offset_topY = height;
+        offset_botY = 0.0f;
+    }
+    else
+    {
+        if (OptionValues[2] % 2 == 0)
+        {
+            width = 1.0f;
+            height = width / 0.75;
+        }
+        else
+        {
+            height = 2.0f;
+            width = height * 0.421875;
+        }
+
+        offset_topX = -width;
+        offset_botX = 0.0f;
+        offset_topY = offset_botY = height / 2;
+    }
+
+    Vertex screens[] =
+    {
+        { { offset_topX + width, offset_topY - height, 0.0f }, { 1.0f, 1.0f } },
+        { { offset_topX,         offset_topY - height, 0.0f }, { 0.0f, 1.0f } },
+        { { offset_topX,         offset_topY,          0.0f }, { 0.0f, 0.0f } },
+        { { offset_topX,         offset_topY,          0.0f }, { 0.0f, 0.0f } },
+        { { offset_topX + width, offset_topY,          0.0f }, { 1.0f, 0.0f } },
+        { { offset_topX + width, offset_topY - height, 0.0f }, { 1.0f, 1.0f } },
+
+        { { offset_botX + width, offset_botY - height, 0.0f }, { 1.0f, 1.0f } },
+        { { offset_botX,         offset_botY - height, 0.0f }, { 0.0f, 1.0f } },
+        { { offset_botX,         offset_botY,          0.0f }, { 0.0f, 0.0f } },
+        { { offset_botX,         offset_botY,          0.0f }, { 0.0f, 0.0f } },
+        { { offset_botX + width, offset_botY,          0.0f }, { 1.0f, 0.0f } },
+        { { offset_botX + width, offset_botY - height, 0.0f }, { 1.0f, 1.0f } }
+    };
+
+    if (OptionValues[2] == 1 || OptionValues[2] == 2)
+    {
+        Vertex *copy = (Vertex*)malloc(sizeof(screens));
+        memcpy(copy, screens, sizeof(screens));
+        memcpy(screens, &copy[6], sizeof(screens) / 2);
+        memcpy(&screens[6], copy, sizeof(screens) / 2);
+    }
+
+    TouchBoundLeft = (screens[8].position[0] + 1) * 640;
+    TouchBoundRight = (screens[6].position[0] + 1) * 640;
+    TouchBoundTop = (-screens[8].position[1] + 1) * 360;
+    TouchBoundBottom = (-screens[6].position[1] + 1) * 360;
+
+    for (unsigned int i = 0; i < OptionValues[2]; i++)
+    {
+        for (int j = 0; j < 2; j++)
+        {
+            for (int k = 0; k < 12; k += 6)
+            {
+                screens[k].position[j] = screens[k + 1].position[j];
+                screens[k + 1].position[j] = screens[k + 2].position[j];
+                screens[k + 2].position[j] = screens[k + 4].position[j];
+                screens[k + 3].position[j] = screens[k + 4].position[j];
+                screens[k + 4].position[j] = screens[k + 5].position[j];
+                screens[k + 5].position[j] = screens[k].position[j];
+            }
+        }
+    }
+
+    glBufferData(GL_ARRAY_BUFFER, sizeof(screens), screens, GL_STATIC_DRAW);
+}
+
+void AdvFrame(void *args)
+{
+    while (true)
+    {
+        chrono::steady_clock::time_point start = chrono::steady_clock::now();
+
+        mutexLock(&EmuMutex);
+        NDS::RunFrame();
+        mutexUnlock(&EmuMutex);
+        memcpy(Framebuffer, GPU::Framebuffer, 256 * 384 * 4);
+
+        while (chrono::duration_cast<chrono::duration<double>>(chrono::steady_clock::now() - start).count() < (float)1 / 60);
+    }
+}
+
+void FillAudioBuffer()
+{
+    s16 buf_in[984 * 2];
+    s16 *buf_out = (s16*)BufferData;
+
+    int num_in = SPU::ReadOutput(buf_in, 984);
+    int num_out = 1440;
+
+    int margin = 6;
+    if (num_in < 984 - margin)
+    {
+        int last = num_in - 1;
+        if (last < 0)
+            last = 0;
+
+        for (int i = num_in; i < 984 - margin; i++)
+            ((u32*)buf_in)[i] = ((u32*)buf_in)[last];
+
+        num_in = 984 - margin;
+    }
+
+    float res_incr = (float)num_in / num_out;
+    float res_timer = 0;
+    int res_pos = 0;
+
+    for (int i = 0; i < 1440; i++)
+    {
+        buf_out[i * 2] = buf_in[res_pos * 2];
+        buf_out[i * 2 + 1] = buf_in[res_pos * 2 + 1];
+
+        res_timer += res_incr;
+        while (res_timer >= 1)
+        {
+            res_timer--;
+            res_pos++;
+        }
+    }
+}
+
+void PlayAudio(void *args)
+{
+    while (true)
+    {
+        FillAudioBuffer();
+        audoutPlayBuffer(&AudioBuffer, &ReleasedBuffer);
+    }
+}
+
+int main(int argc, char **argv)
+{
+    consoleInit(NULL);
+
+    Config::Load();
     if (!Config::HasConfigFile("bios7.bin") || !Config::HasConfigFile("bios9.bin") || !Config::HasConfigFile("firmware.bin"))
     {
         consoleClear();
@@ -458,11 +477,11 @@ int main(int argc, char** argv)
             consoleUpdate(NULL);
     }
 
-    NDS::Init();
-
+    string rompath = Menu();
     string srampath = rompath.substr(0, rompath.rfind(".")) + ".sav";
     string statepath = rompath.substr(0, rompath.rfind(".")) + ".mln";
 
+    NDS::Init();
     if (!NDS::LoadROM(rompath.c_str(), srampath.c_str(), Config::DirectBoot))
     {
         consoleClear();
@@ -472,6 +491,7 @@ int main(int argc, char** argv)
             consoleUpdate(NULL);
     }
 
+    pcvInitialize();
     if (OptionValues[4] == 0)
         pcvSetClockRate(PcvModule_Cpu, 1020000000);
     else if (OptionValues[4] == 1)
@@ -483,9 +503,8 @@ int main(int argc, char** argv)
 
     consoleClear();
     fclose(stdout);
-    InitEGL();
-    gladLoadGL();
     InitRenderer();
+    SetScreenLayout();
 
     Thread main;
     threadCreate(&main, AdvFrame, NULL, 0x80000, 0x30, 1);
@@ -582,8 +601,8 @@ int main(int argc, char** argv)
 
     NDS::DeInit();
     audoutExit();
-    DeinitRenderer();
-    DeinitEGL();
+    DeInitRenderer();
+    pcvSetClockRate(PcvModule_Cpu, 1020000000);
     pcvExit();
     consoleExit(NULL);
     return 0;

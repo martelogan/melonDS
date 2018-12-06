@@ -79,11 +79,11 @@ Mutex EmuMutex;
 EGLDisplay Display;
 EGLContext Context;
 EGLSurface Surface;
-GLuint Program, VertArrayObj, VertBufferObj;
+GLuint Program, VertArrayObj, VertBufferObj, Texture;
 
 typedef struct
 {
-    float position[3];
+    float position[2];
     float texcoord[2];
 } Vertex;
 
@@ -91,13 +91,13 @@ const char *VertexShader =
     "#version 330 core\n"
     "precision mediump float;"
 
-    "layout (location = 0) in vec3 in_pos;"
+    "layout (location = 0) in vec2 in_pos;"
     "layout (location = 1) in vec2 in_texcoord;"
     "out vec2 vtx_texcoord;"
 
     "void main()"
     "{"
-        "gl_Position = vec4(in_pos, 1.0);"
+        "gl_Position = vec4(in_pos, 0.0, 1.0);"
         "vtx_texcoord = in_texcoord;"
     "}";
 
@@ -118,7 +118,7 @@ void InitRenderer()
 {
     EGLConfig config;
     EGLint numconfigs;
-    const EGLint attributelist[] = { EGL_NONE };
+    EGLint attributelist[] = { EGL_NONE };
 
     Display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     eglInitialize(Display, NULL, NULL);
@@ -151,19 +151,24 @@ void InitRenderer()
 
     glGenBuffers(1, &VertBufferObj);
     glBindBuffer(GL_ARRAY_BUFFER, VertBufferObj);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, position));
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, position));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, texcoord));
     glEnableVertexAttribArray(1);
 
+    glGenTextures(1, &Texture);
+    glBindTexture(GL_TEXTURE_2D, Texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     glUseProgram(Program);
 }
 
 void DeInitRenderer()
 {
+    glDeleteTextures(1, &Texture);
     glDeleteBuffers(1, &VertBufferObj);
     glDeleteVertexArrays(1, &VertArrayObj);
     glDeleteProgram(Program);
@@ -330,49 +335,44 @@ void SetScreenLayout()
 
     Vertex screens[] =
     {
-        { { offset_topX + width, offset_topY - height, 0.0f }, { 1.0f, 1.0f } },
-        { { offset_topX,         offset_topY - height, 0.0f }, { 0.0f, 1.0f } },
-        { { offset_topX,         offset_topY,          0.0f }, { 0.0f, 0.0f } },
-        { { offset_topX,         offset_topY,          0.0f }, { 0.0f, 0.0f } },
-        { { offset_topX + width, offset_topY,          0.0f }, { 1.0f, 0.0f } },
-        { { offset_topX + width, offset_topY - height, 0.0f }, { 1.0f, 1.0f } },
+        { { offset_topX + width, offset_topY - height }, { 1.0f, 1.0f } },
+        { { offset_topX,         offset_topY - height }, { 0.0f, 1.0f } },
+        { { offset_topX,         offset_topY,         }, { 0.0f, 0.0f } },
+        { { offset_topX + width, offset_topY,         }, { 1.0f, 0.0f } },
 
-        { { offset_botX + width, offset_botY - height, 0.0f }, { 1.0f, 1.0f } },
-        { { offset_botX,         offset_botY - height, 0.0f }, { 0.0f, 1.0f } },
-        { { offset_botX,         offset_botY,          0.0f }, { 0.0f, 0.0f } },
-        { { offset_botX,         offset_botY,          0.0f }, { 0.0f, 0.0f } },
-        { { offset_botX + width, offset_botY,          0.0f }, { 1.0f, 0.0f } },
-        { { offset_botX + width, offset_botY - height, 0.0f }, { 1.0f, 1.0f } }
+        { { offset_botX + width, offset_botY - height }, { 1.0f, 1.0f } },
+        { { offset_botX,         offset_botY - height }, { 0.0f, 1.0f } },
+        { { offset_botX,         offset_botY,         }, { 0.0f, 0.0f } },
+        { { offset_botX + width, offset_botY,         }, { 1.0f, 0.0f } }
     };
 
     if (Config::ScreenRotation == 1 || Config::ScreenRotation == 2)
     {
         Vertex *copy = new Vertex[sizeof(screens) / sizeof(Vertex)];
         memcpy(copy, screens, sizeof(screens));
-        memcpy(screens, &copy[6], sizeof(screens) / 2);
-        memcpy(&screens[6], copy, sizeof(screens) / 2);
+        memcpy(screens, &copy[4], sizeof(screens) / 2);
+        memcpy(&screens[4], copy, sizeof(screens) / 2);
         delete copy;
     }
 
-    TouchBoundLeft = (screens[8].position[0] + 1) * 640;
-    TouchBoundRight = (screens[6].position[0] + 1) * 640;
-    TouchBoundTop = (-screens[8].position[1] + 1) * 360;
-    TouchBoundBottom = (-screens[6].position[1] + 1) * 360;
+    TouchBoundLeft = (screens[6].position[0] + 1) * 640;
+    TouchBoundRight = (screens[4].position[0] + 1) * 640;
+    TouchBoundTop = (-screens[6].position[1] + 1) * 360;
+    TouchBoundBottom = (-screens[4].position[1] + 1) * 360;
 
     for (int i = 0; i < Config::ScreenRotation; i++)
     {
-        for (int j = 0; j < 2; j++)
+        int size = sizeof(screens[0].position);
+        Vertex *copy = new Vertex[sizeof(screens) / sizeof(Vertex)];
+        memcpy(copy, screens, sizeof(screens));
+        for (int k = 0; k < 8; k += 4)
         {
-            for (int k = 0; k < 12; k += 6)
-            {
-                screens[k].position[j] = screens[k + 1].position[j];
-                screens[k + 1].position[j] = screens[k + 2].position[j];
-                screens[k + 2].position[j] = screens[k + 4].position[j];
-                screens[k + 3].position[j] = screens[k + 4].position[j];
-                screens[k + 4].position[j] = screens[k + 5].position[j];
-                screens[k + 5].position[j] = screens[k].position[j];
-            }
+            memcpy(screens[k    ].position, copy[k + 1].position, size);
+            memcpy(screens[k + 1].position, copy[k + 2].position, size);
+            memcpy(screens[k + 2].position, copy[k + 3].position, size);
+            memcpy(screens[k + 3].position, copy[k    ].position, size);
         }
+        delete(copy);
     }
 
     glBufferData(GL_ARRAY_BUFFER, sizeof(screens), screens, GL_STATIC_DRAW);
@@ -449,8 +449,6 @@ int main(int argc, char **argv)
     string srampath = rompath.substr(0, rompath.rfind(".")) + ".sav";
     string statepath = rompath.substr(0, rompath.rfind(".")) + ".mln";
 
-    appletLockExit();
-
     Config::Load();
     if (!Config::HasConfigFile("bios7.bin") || !Config::HasConfigFile("bios9.bin") || !Config::HasConfigFile("firmware.bin"))
     {
@@ -460,9 +458,7 @@ int main(int argc, char **argv)
         printf("bios9.bin -- ARM9 BIOS\n");
         printf("firmware.bin -- firmware image\n\n");
         printf("Dump the files from your DS and place them in sdmc:/switch/melonds");
-
-        while (appletMainLoop())
-            consoleUpdate(NULL);
+        while (true);
     }
 
     NDS::Init();
@@ -470,10 +466,10 @@ int main(int argc, char **argv)
     {
         consoleClear();
         printf("Failed to load ROM. Make sure the file can be accessed.");
-
-        while (appletMainLoop())
-            consoleUpdate(NULL);
+        while(true);
     }
+
+    appletLockExit();
 
     pcvInitialize();
     if (Config::SwitchOverclock == 0)
@@ -577,9 +573,9 @@ int main(int argc, char **argv)
         }
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 192, 0, GL_BGRA, GL_UNSIGNED_BYTE, Framebuffer);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 192, 0, GL_BGRA, GL_UNSIGNED_BYTE, &Framebuffer[256 * 192]);
-        glDrawArrays(GL_TRIANGLES, 6, 12);
+        glDrawArrays(GL_TRIANGLE_FAN, 4, 4);
         eglSwapBuffers(Display, Surface);
     }
 

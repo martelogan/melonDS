@@ -593,15 +593,6 @@ int main(int argc, char **argv)
         while (true);
     }
 
-    NDS::Init();
-    if (!NDS::LoadROM(rompath.c_str(), srampath.c_str(), Config::DirectBoot))
-    {
-        glClear(GL_COLOR_BUFFER_BIT);
-        DrawString("Failed to load ROM. Make sure the file can be accessed.", 0, 0, 38, false);
-        eglSwapBuffers(Display, Surface);
-        while (true);
-    }
-
     appletLockExit();
 
     pcvInitialize();
@@ -613,6 +604,9 @@ int main(int argc, char **argv)
         pcvSetClockRate(PcvModule_Cpu, 1581000000);
     else
         pcvSetClockRate(PcvModule_Cpu, 1785000000);
+
+    NDS::Init();
+    NDS::LoadROM(rompath.c_str(), srampath.c_str(), Config::DirectBoot);
 
     SetScreenLayout();
 

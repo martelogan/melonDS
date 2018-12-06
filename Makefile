@@ -36,7 +36,7 @@ SOURCES		:=	src src/switch
 DATA		:=	data
 INCLUDES	:=	src
 EXEFS_SRC	:=	exefs_src
-#ROMFS	:=	romfs
+ROMFS		:=	romfs
 
 APP_TITLE   := melonDS
 APP_AUTHOR  := Hydr8gon, StapleButter

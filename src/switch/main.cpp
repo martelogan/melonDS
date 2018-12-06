@@ -52,14 +52,14 @@ vector<const char*> OptionDisplay =
 
 vector<vector<const char*>> OptionValuesDisplay =
 {
-    { "Off", "On " },
-    { "Off", "On " },
-    { "0  ", "90 ", "180", "270" },
-    { "Natural   ", "Vertical  ", "Horizontal" },
+    { "Off", "On" },
+    { "Off", "On" },
+    { "0", "90", "180", "270" },
+    { "Natural", "Vertical", "Horizontal" },
     { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" }
 };
 
-vector<int*> OptionValues =
+int *OptionValues[] =
 {
     &Config::DirectBoot,
     &Config::Threaded3D,
@@ -67,6 +67,9 @@ vector<int*> OptionValues =
     &Config::ScreenLayout,
     &Config::SwitchOverclock
 };
+
+ColorSetId MenuTheme;
+unsigned char *Font, *FontColor;
 
 u8 *BufferData;
 AudioOutBuffer AudioBuffer, *ReleasedBuffer;
@@ -80,6 +83,20 @@ EGLDisplay Display;
 EGLContext Context;
 EGLSurface Surface;
 GLuint Program, VertArrayObj, VertBufferObj, Texture;
+
+const int charWidth[] =
+{
+    11, 10, 11, 20, 19, 28, 25,  7, 12, 12,
+    15, 25,  9, 11,  9, 17, 21, 21, 21, 21,
+    21, 21, 21, 21, 21, 21,  9,  9, 26, 25,
+    26, 18, 29, 24, 21, 24, 27, 20, 20, 27,
+    24, 10, 17, 21, 16, 31, 27, 29, 20, 29,
+    20, 19, 21, 26, 25, 37, 22, 21, 24, 12,
+    17, 12, 18, 17, 10, 20, 22, 19, 22, 20,
+    10, 22, 20,  9, 12, 19,  9, 30, 20, 22,
+    22, 22, 13, 17, 13, 20, 17, 29, 18, 18,
+    17, 10,  9, 10, 25, 32, 27, 32,  9, 12
+};
 
 typedef struct
 {
@@ -182,17 +199,128 @@ void DeInitRenderer()
     Display = NULL;
 }
 
+unsigned char *TexFromBMP(string filename)
+{
+    FILE *bmp = fopen(filename.c_str(), "rb");
+
+    unsigned char info[54];
+    fread(info, sizeof(unsigned char), 54, bmp);
+
+    int width = *(int*)&info[18];
+    int height = *(int*)&info[22];
+    unsigned char *data = new unsigned char[width * height * 3];
+    fread(data, sizeof(unsigned char), width * height * 3, bmp);
+
+    fclose(bmp);
+    return data;
+}
+
+void DrawChar(char c, int x, int y, int size, bool color)
+{
+    int col = c - 32;
+    int row = 9;
+    while (col > 9)
+    {
+        col -= 10;
+        row--;
+    }
+
+    unsigned char *tex = new unsigned char[48 * 48 * 3];
+    if (color)
+    {
+        for (int i = 0; i < 48; i++)
+            memcpy(&tex[i * 48 * 3], &FontColor[((row * 512 + col) * 48 + (i + 32) * 512) * 3], 48 * 3);
+    }
+    else
+    {
+        for (int i = 0; i < 48; i++)
+            memcpy(&tex[i * 48 * 3], &Font[((row * 512 + col) * 48 + (i + 32) * 512) * 3], 48 * 3);
+    }
+
+    Vertex character[] =
+    {
+        { { -1.0f + ((float)(x + size) / 640), 1.0f - ((float)y / 360)          }, { 1.0f, 1.0f } },
+        { { -1.0f + ((float)x / 640),          1.0f - ((float)y / 360)          }, { 0.0f, 1.0f } },
+        { { -1.0f + ((float)x / 640),          1.0f - ((float)(y + size) / 360) }, { 0.0f, 0.0f } },
+        { { -1.0f + ((float)(x + size) / 640), 1.0f - ((float)(y + size) / 360) }, { 1.0f, 0.0f } }
+    };
+
+    glBufferData(GL_ARRAY_BUFFER, sizeof(character), character, GL_DYNAMIC_DRAW);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 48, 48, 0, GL_BGR, GL_UNSIGNED_BYTE, tex);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+}
+
+void DrawString(string str, int x, int y, int size, bool color)
+{
+    const char *s = str.c_str();
+    int currentx = x;
+    for (unsigned int i = 0; i < strlen(s); i++)
+    {
+        DrawChar(s[i], currentx, y, size, color);
+        currentx += (float)charWidth[s[i] - 32] * size / 48;
+    }
+}
+
+void DrawStringFromRight(string str, int x, int y, int size, bool color)
+{
+    const char *s = str.c_str();
+    int length = 0;
+    for (unsigned int i = 0; i < strlen(s); i++)
+        length += (float)charWidth[s[i] - 32] * size / 48;
+    DrawString(str, x - length, y, size, color);
+}
+
+void DrawLine(int x1, int y1, int x2, int y2, bool color)
+{
+    Vertex line[] =
+    {
+        { { -1.0f + (float)x1 / 640, 1.0f - (float)y1 / 360 }, { 0.0f, 0.0f } },
+        { { -1.0f + (float)x2 / 640, 1.0f - (float)y2 / 360 }, { 0.0f, 0.0f } }
+    };
+
+    unsigned char tex[3];
+    if (MenuTheme == ColorSetId_Light)
+    {
+        if (color)
+            memset(tex, 205, 3);
+        else
+            memset(tex, 45, 3);
+    }
+    else
+    {
+        if (color)
+            memset(tex, 77, 3);
+        else
+            memset(tex, 255, 3);
+    }
+
+    glBufferData(GL_ARRAY_BUFFER, sizeof(line), line, GL_DYNAMIC_DRAW);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_BGR, GL_UNSIGNED_BYTE, tex);
+    glDrawArrays(GL_LINES, 0, 2);
+}
+
 string Menu()
 {
+    romfsInit();
+    if (MenuTheme == ColorSetId_Light)
+    {
+        glClearColor((float)235 / 255, (float)235 / 255, (float)235 / 255, 1.0f);
+        Font = TexFromBMP("romfs:/lightfont.bmp");
+        FontColor = TexFromBMP("romfs:/lightfont-color.bmp");
+    }
+    else
+    {
+        glClearColor((float)45 / 255, (float)45 / 255, (float)45 / 255, 1.0f);
+        Font = TexFromBMP("romfs:/darkfont.bmp");
+        FontColor = TexFromBMP("romfs:/darkfont-color.bmp");
+    }
+    romfsExit();
+
     string rompath = "sdmc:/";
     bool options = false;
 
     while (rompath.find(".nds", (rompath.length() - 4)) == string::npos)
     {
-        consoleClear();
-        printf("melonDS " MELONDS_VERSION "\n");
-        printf(MELONDS_URL);
-
         unsigned int selection = 0;
         vector<string> files;
 
@@ -209,6 +337,13 @@ string Menu()
 
         while (true)
         {
+            glClear(GL_COLOR_BUFFER_BIT);
+
+            DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false);
+            DrawLine(30, 88, 1250, 88, false);
+            DrawLine(30, 648, 1250, 648, false);
+            DrawLine(90, 130, 1190, 130, true);
+
             hidScanInput();
             u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
 
@@ -237,19 +372,12 @@ string Menu()
 
                 for (unsigned int i = 0; i < OptionDisplay.size(); i++)
                 {
-                    if (i == selection)
-                    {
-                        printf(CONSOLE_WHITE"\x1b[%d;1H%s", i + 4, OptionDisplay[i]);
-                        printf(CONSOLE_WHITE"\x1b[%d;30H%s", i + 4, OptionValuesDisplay[i][*OptionValues[i]]);
-                    }
-                    else
-                    {
-                        printf(CONSOLE_RESET"\x1b[%d;1H%s", i + 4, OptionDisplay[i]);
-                        printf(CONSOLE_RESET"\x1b[%d;30H%s", i + 4, OptionValuesDisplay[i][*OptionValues[i]]);
-                    }
+                    DrawString(OptionDisplay[i], 105, 146 + i * 70, 38, i == selection);
+                    DrawStringFromRight(OptionValuesDisplay[i][*OptionValues[i]], 1175, 146 + i * 70, 38, i == selection);
+                    DrawLine(90, 200 + i * 70, 1190, 200 + i * 70, true);
                 }
 
-                printf(CONSOLE_RESET"\x1b[45;1HPress X to return to the file browser.");
+                DrawStringFromRight("(X) Files    (A) OK", 1208, 665, 36, false);
             }
             else
             {
@@ -280,16 +408,14 @@ string Menu()
 
                 for (unsigned int i = 0; i < files.size(); i++)
                 {
-                    if (i == selection)
-                        printf(CONSOLE_WHITE"\x1b[%d;1H%s", i + 4, files[i].c_str());
-                    else
-                        printf(CONSOLE_RESET"\x1b[%d;1H%s", i + 4, files[i].c_str());
+                    DrawString(files[i], 105, 146 + i * 70, 38, i == selection);
+                    DrawLine(90, 200 + i * 70, 1190, 200 + i * 70, true);
                 }
 
-                printf(CONSOLE_RESET"\x1b[45;1HPress X to open the options menu.");
+                DrawStringFromRight("(X) Options    (B) Back    (A) OK", 1208, 665, 36, false);
             }
 
-            consoleUpdate(NULL);
+            eglSwapBuffers(Display, Surface);
         }
     }
 
@@ -375,7 +501,8 @@ void SetScreenLayout()
         delete(copy);
     }
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(screens), screens, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(screens), screens, GL_DYNAMIC_DRAW);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 }
 
 void AdvFrame(void *args)
@@ -443,7 +570,11 @@ void PlayAudio(void *args)
 
 int main(int argc, char **argv)
 {
-    consoleInit(NULL);
+    InitRenderer();
+
+    setsysInitialize();
+    setsysGetColorSetId(&MenuTheme);
+    setsysExit();
 
     string rompath = Menu();
     string srampath = rompath.substr(0, rompath.rfind(".")) + ".sav";
@@ -452,21 +583,23 @@ int main(int argc, char **argv)
     Config::Load();
     if (!Config::HasConfigFile("bios7.bin") || !Config::HasConfigFile("bios9.bin") || !Config::HasConfigFile("firmware.bin"))
     {
-        consoleClear();
-        printf("One or more of the following required files don't exist or couldn't be accessed:");
-        printf("bios7.bin -- ARM7 BIOS\n");
-        printf("bios9.bin -- ARM9 BIOS\n");
-        printf("firmware.bin -- firmware image\n\n");
-        printf("Dump the files from your DS and place them in sdmc:/switch/melonds");
+        glClear(GL_COLOR_BUFFER_BIT);
+        DrawString("One or more of the following required files don't exist or couldn't be accessed:", 0, 0, 38, false);
+        DrawString("bios7.bin -- ARM7 BIOS", 0, 38, 38, false);
+        DrawString("bios9.bin -- ARM9 BIOS", 0, 38 * 2, 38, false);
+        DrawString("firmware.bin -- firmware image", 0, 38 * 3, 38, false);
+        DrawString("Dump the files from your DS and place them in sdmc:/switch/melonds", 0, 38 * 4, 38, false);
+        eglSwapBuffers(Display, Surface);
         while (true);
     }
 
     NDS::Init();
     if (!NDS::LoadROM(rompath.c_str(), srampath.c_str(), Config::DirectBoot))
     {
-        consoleClear();
-        printf("Failed to load ROM. Make sure the file can be accessed.");
-        while(true);
+        glClear(GL_COLOR_BUFFER_BIT);
+        DrawString("Failed to load ROM. Make sure the file can be accessed.", 0, 0, 38, false);
+        eglSwapBuffers(Display, Surface);
+        while (true);
     }
 
     appletLockExit();
@@ -481,9 +614,6 @@ int main(int argc, char **argv)
     else
         pcvSetClockRate(PcvModule_Cpu, 1785000000);
 
-    consoleClear();
-    fclose(stdout);
-    InitRenderer();
     SetScreenLayout();
 
     Thread main;
@@ -572,6 +702,7 @@ int main(int argc, char **argv)
             NDS::ReleaseScreen();
         }
 
+        glClear(GL_COLOR_BUFFER_BIT);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 192, 0, GL_BGRA, GL_UNSIGNED_BYTE, Framebuffer);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 192, 0, GL_BGRA, GL_UNSIGNED_BYTE, &Framebuffer[256 * 192]);
@@ -583,7 +714,6 @@ int main(int argc, char **argv)
     DeInitRenderer();
     pcvSetClockRate(PcvModule_Cpu, 1020000000);
     pcvExit();
-    consoleExit(NULL);
     appletUnlockExit();
     return 0;
 }

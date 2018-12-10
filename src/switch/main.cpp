@@ -45,8 +45,10 @@ vector<const char*> OptionDisplay =
 {
     "Boot game directly",
     "Threaded 3D renderer",
+    "Separate savefiles from savestates",
     "Screen rotation",
     "Screen layout",
+    "Screen filtering",
     "Switch overclock"
 };
 
@@ -54,8 +56,10 @@ vector<vector<const char*>> OptionValuesDisplay =
 {
     { "Off", "On" },
     { "Off", "On" },
+    { "Off", "On" },
     { "0", "90", "180", "270" },
     { "Natural", "Vertical", "Horizontal" },
+    { "Off", "On" },
     { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" }
 };
 
@@ -63,8 +67,10 @@ int *OptionValues[] =
 {
     &Config::DirectBoot,
     &Config::Threaded3D,
+    &Config::SavestateRelocSRAM,
     &Config::ScreenRotation,
     &Config::ScreenLayout,
+    &Config::ScreenFilter,
     &Config::SwitchOverclock
 };
 
@@ -177,8 +183,17 @@ void InitRenderer()
     glBindTexture(GL_TEXTURE_2D, Texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    if (Config::ScreenFilter)
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+    else
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
 
     glUseProgram(Program);
 }
@@ -579,6 +594,7 @@ int main(int argc, char **argv)
     string rompath = Menu();
     string srampath = rompath.substr(0, rompath.rfind(".")) + ".sav";
     string statepath = rompath.substr(0, rompath.rfind(".")) + ".mln";
+    string statesrampath = statepath + ".sav";
 
     Config::Load();
     if (!Config::HasConfigFile("bios7.bin") || !Config::HasConfigFile("bios9.bin") || !Config::HasConfigFile("firmware.bin"))
@@ -648,6 +664,9 @@ int main(int argc, char **argv)
                 mutexUnlock(&EmuMutex);
             }
             delete state;
+
+            if (Config::SavestateRelocSRAM)
+                NDS::RelocateSave(const_cast<char*>(statesrampath.c_str()), pressed & KEY_L);
         }
 
         for (int i = 0; i < 12; i++)

@@ -31,11 +31,13 @@ namespace Config
 
 const char* kConfigFile = "melonDS.ini";
 
+#ifndef __SWITCH__
 int KeyMapping[12];
 int JoyMapping[12];
 
 int WindowWidth;
 int WindowHeight;
+#endif
 
 int ScreenRotation;
 int ScreenGap;
@@ -47,7 +49,9 @@ int DirectBoot;
 
 int Threaded3D;
 
+#ifndef __SWITCH__
 int SocketBindAnyAddr;
+#endif
 
 int SavestateRelocSRAM;
 
@@ -68,6 +72,7 @@ typedef struct
 
 ConfigEntry ConfigFile[] =
 {
+#ifndef __SWITCH__
     {"Key_A",      0, &KeyMapping[0],   32, NULL, 0},
     {"Key_B",      0, &KeyMapping[1],   31, NULL, 0},
     {"Key_Select", 0, &KeyMapping[2],   57, NULL, 0},
@@ -96,6 +101,7 @@ ConfigEntry ConfigFile[] =
 
     {"WindowWidth",  0, &WindowWidth,  256, NULL, 0},
     {"WindowHeight", 0, &WindowHeight, 384, NULL, 0},
+#endif
 
     {"ScreenRotation", 0, &ScreenRotation, 0, NULL, 0},
     {"ScreenGap",      0, &ScreenGap,      0, NULL, 0},
@@ -107,7 +113,9 @@ ConfigEntry ConfigFile[] =
 
     {"Threaded3D", 0, &Threaded3D, 1, NULL, 0},
 
+#ifndef __SWITCH__
     {"SockBindAnyAddr", 0, &SocketBindAnyAddr, 0, NULL, 0},
+#endif
 
     {"SavStaRelocSRAM", 0, &SavestateRelocSRAM, 1, NULL, 0},
 

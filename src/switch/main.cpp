@@ -47,7 +47,9 @@ vector<const char*> OptionDisplay =
     "Threaded 3D renderer",
     "Separate savefiles from savestates",
     "Screen rotation",
+    "Mid-screen gap",
     "Screen layout",
+    "Screen sizing",
     "Screen filtering",
     "Switch overclock"
 };
@@ -58,7 +60,9 @@ vector<vector<const char*>> OptionValuesDisplay =
     { "Off", "On" },
     { "Off", "On" },
     { "0", "90", "180", "270" },
+    { "0 pixels", "1 pixel", "8 pixels", "64 pixels", "90 pixels", "128 pixels" },
     { "Natural", "Vertical", "Horizontal" },
+    { "Even", "Emphasize top", "Emphasize bottom" },
     { "Off", "On" },
     { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" }
 };
@@ -69,7 +73,9 @@ int *OptionValues[] =
     &Config::Threaded3D,
     &Config::SavestateRelocSRAM,
     &Config::ScreenRotation,
+    &Config::ScreenGap,
     &Config::ScreenLayout,
+    &Config::ScreenSizing,
     &Config::ScreenFilter,
     &Config::SwitchOverclock
 };
@@ -120,7 +126,7 @@ const char *VertexShader =
 
     "void main()"
     "{"
-        "gl_Position = vec4(in_pos, 0.0, 1.0);"
+        "gl_Position = vec4(-1.0 + in_pos.x / 640, 1.0 - in_pos.y / 360, 0.0, 1.0);"
         "vtx_texcoord = in_texcoord;"
     "}";
 
@@ -183,17 +189,8 @@ void InitRenderer()
     glBindTexture(GL_TEXTURE_2D, Texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    if (Config::ScreenFilter)
-    {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    }
-    else
-    {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    }
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     glUseProgram(Program);
 }
@@ -230,7 +227,7 @@ unsigned char *TexFromBMP(string filename)
     return data;
 }
 
-void DrawChar(char c, int x, int y, int size, bool color)
+void DrawChar(char c, float x, float y, int size, bool color)
 {
     int col = c - 32;
     int row = 9;
@@ -254,10 +251,10 @@ void DrawChar(char c, int x, int y, int size, bool color)
 
     Vertex character[] =
     {
-        { { -1.0f + ((float)(x + size) / 640), 1.0f - ((float)y / 360)          }, { 1.0f, 1.0f } },
-        { { -1.0f + ((float)x / 640),          1.0f - ((float)y / 360)          }, { 0.0f, 1.0f } },
-        { { -1.0f + ((float)x / 640),          1.0f - ((float)(y + size) / 360) }, { 0.0f, 0.0f } },
-        { { -1.0f + ((float)(x + size) / 640), 1.0f - ((float)(y + size) / 360) }, { 1.0f, 0.0f } }
+        { { x + size, y        }, { 1.0f, 1.0f } },
+        { { x,        y        }, { 0.0f, 1.0f } },
+        { { x,        y + size }, { 0.0f, 0.0f } },
+        { { x + size, y + size }, { 1.0f, 0.0f } }
     };
 
     glBufferData(GL_ARRAY_BUFFER, sizeof(character), character, GL_DYNAMIC_DRAW);
@@ -265,7 +262,7 @@ void DrawChar(char c, int x, int y, int size, bool color)
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
-void DrawString(string str, int x, int y, int size, bool color)
+void DrawString(string str, float x, float y, int size, bool color)
 {
     const char *s = str.c_str();
     int currentx = x;
@@ -285,12 +282,12 @@ void DrawStringFromRight(string str, int x, int y, int size, bool color)
     DrawString(str, x - length, y, size, color);
 }
 
-void DrawLine(int x1, int y1, int x2, int y2, bool color)
+void DrawLine(float x1, float y1, float x2, float y2, bool color)
 {
     Vertex line[] =
     {
-        { { -1.0f + (float)x1 / 640, 1.0f - (float)y1 / 360 }, { 0.0f, 0.0f } },
-        { { -1.0f + (float)x2 / 640, 1.0f - (float)y2 / 360 }, { 0.0f, 0.0f } }
+        { { x1, y1 }, { 0.0f, 0.0f } },
+        { { x2, y2 }, { 0.0f, 0.0f } }
     };
 
     unsigned char tex[3];
@@ -439,52 +436,164 @@ string Menu()
 
 void SetScreenLayout()
 {
-    float width, height, offset_topX, offset_botX, offset_topY, offset_botY;
+    float width_top, height_top, width_bot, height_bot, offsetX_top, offsetX_bot, offsetY_top, offsetY_bot, gap;
+
+    if (Config::ScreenGap == 0)
+        gap = 0;
+    else if (Config::ScreenGap == 1)
+        gap = 1;
+    else if (Config::ScreenGap == 2)
+        gap = 8;
+    else if (Config::ScreenGap == 3)
+        gap = 64;
+    else if (Config::ScreenGap == 4)
+        gap = 90;
+    else
+        gap = 128;
 
     if (Config::ScreenLayout == 0)
         Config::ScreenLayout = (Config::ScreenRotation % 2 == 0) ? 1 : 2;
 
     if (Config::ScreenLayout == 1)
     {
-        height = 1.0f;
+        height_top = height_bot = 360 - gap / 2;
         if (Config::ScreenRotation % 2 == 0)
-            width = height * 0.75;
+            width_top = width_bot = height_top * 4 / 3;
         else
-            width = height * 0.421875;
+            width_top = width_bot = height_top * 3 / 4;
 
-        offset_topX = offset_botX = -width / 2;
-        offset_topY = height;
-        offset_botY = 0.0f;
+        offsetX_top = offsetX_bot = 640 - width_top / 2;
+        offsetY_top = 0;
+        offsetY_bot = 720 - height_top;
     }
     else
     {
         if (Config::ScreenRotation % 2 == 0)
         {
-            width = 1.0f;
-            height = width / 0.75;
+            width_top = width_bot = 640 - gap / 2;
+            height_top = height_bot = width_top * 3 / 4;
+            offsetX_top = 0;
+            offsetX_bot = 1280 - width_top;
         }
         else
         {
-            height = 2.0f;
-            width = height * 0.421875;
+            height_top = height_bot = 720;
+            width_top = width_bot = height_top * 3 / 4;
+            offsetX_top = 640 - width_top - gap / 2;
+            offsetX_bot = 640 + gap / 2;
         }
 
-        offset_topX = -width;
-        offset_botX = 0.0f;
-        offset_topY = offset_botY = height / 2;
+        offsetY_top = offsetY_bot = 360 - height_top / 2;
+    }
+
+    if (Config::ScreenSizing == 1)
+    {
+        if (Config::ScreenLayout == 1)
+        {
+            if (Config::ScreenRotation % 2 == 0)
+            {
+                width_bot = 256;
+                height_bot = 192;
+                height_top = 720 - height_bot - gap;
+                width_top = height_top * 4 / 3;
+            }
+            else
+            {
+                width_bot = 192;
+                height_bot = 256;
+                height_top = 720 - height_bot - gap;
+                width_top = height_top * 3 / 4;
+            }
+
+            offsetX_top = 640 - width_top / 2;
+            offsetX_bot = 640 - width_bot / 2;
+            offsetY_bot = 720 - height_bot;
+        }
+        else
+        {
+            if (Config::ScreenRotation % 2 == 0)
+            {
+                width_bot = 256;
+                height_bot = 192;
+                width_top = 1280 - width_bot - gap;
+                if (width_top > 960)
+                    width_top = 960;
+                height_top = width_top * 3 / 4;
+                offsetX_top = 640 - (width_bot + width_top + gap) / 2;
+                offsetX_bot = offsetX_top + width_top + gap;
+                offsetY_top = (720 - height_top) / 2;
+                offsetY_bot = offsetY_top + height_top - height_bot;
+            }
+            else
+            {
+                width_bot = 192;
+                height_bot = 256;
+                offsetY_bot = 720 - height_bot;
+                offsetX_top += (width_top - width_bot) / 2;
+                offsetX_bot += (width_top - width_bot) / 2;
+            }
+        }
+    }
+    else if (Config::ScreenSizing == 2)
+    {
+        if (Config::ScreenLayout == 1)
+        {
+            if (Config::ScreenRotation % 2 == 0)
+            {
+                width_top = 256;
+                height_top = 192;
+                height_bot = 720 - height_top - gap;
+                width_bot = height_bot * 4 / 3;
+            }
+            else
+            {
+                width_bot = 192;
+                height_bot = 256;
+                height_top = 720 - height_bot - gap;
+                width_top = height_top * 3 / 4;
+            }
+
+            offsetX_bot = 640 - width_bot / 2;
+            offsetX_top = 640 - width_top / 2;
+            offsetY_bot = 720 - height_bot;
+        }
+        else
+        {
+            if (Config::ScreenRotation % 2 == 0)
+            {
+                width_top = 256;
+                height_top = 192;
+                width_bot = 1280 - width_top - gap;
+                if (width_bot > 960)
+                    width_bot = 960;
+                height_bot = width_bot * 3 / 4;
+                offsetX_top = 640 - (width_bot + width_top + gap) / 2;
+                offsetX_bot = offsetX_top + width_top + gap;
+                offsetY_bot = (720 - height_bot) / 2;
+                offsetY_top = offsetY_bot + height_bot - height_top;
+            }
+            else
+            {
+                width_top = 192;
+                height_top = 256;
+                offsetY_top = 720 - height_top;
+                offsetX_top += (width_bot - width_top) / 2;
+                offsetX_bot -= (width_bot - width_top) / 2;
+            }
+        }
     }
 
     Vertex screens[] =
     {
-        { { offset_topX + width, offset_topY - height }, { 1.0f, 1.0f } },
-        { { offset_topX,         offset_topY - height }, { 0.0f, 1.0f } },
-        { { offset_topX,         offset_topY,         }, { 0.0f, 0.0f } },
-        { { offset_topX + width, offset_topY,         }, { 1.0f, 0.0f } },
+        { { offsetX_top + width_top, offsetY_top + height_top }, { 1.0f, 1.0f } },
+        { { offsetX_top,             offsetY_top + height_top }, { 0.0f, 1.0f } },
+        { { offsetX_top,             offsetY_top              }, { 0.0f, 0.0f } },
+        { { offsetX_top + width_top, offsetY_top              }, { 1.0f, 0.0f } },
 
-        { { offset_botX + width, offset_botY - height }, { 1.0f, 1.0f } },
-        { { offset_botX,         offset_botY - height }, { 0.0f, 1.0f } },
-        { { offset_botX,         offset_botY,         }, { 0.0f, 0.0f } },
-        { { offset_botX + width, offset_botY,         }, { 1.0f, 0.0f } }
+        { { offsetX_bot + width_bot, offsetY_bot + height_bot }, { 1.0f, 1.0f } },
+        { { offsetX_bot,             offsetY_bot + height_bot }, { 0.0f, 1.0f } },
+        { { offsetX_bot,             offsetY_bot              }, { 0.0f, 0.0f } },
+        { { offsetX_bot + width_bot, offsetY_bot              }, { 1.0f, 0.0f } }
     };
 
     if (Config::ScreenRotation == 1 || Config::ScreenRotation == 2)
@@ -496,10 +605,10 @@ void SetScreenLayout()
         delete copy;
     }
 
-    TouchBoundLeft = (screens[6].position[0] + 1) * 640;
-    TouchBoundRight = (screens[4].position[0] + 1) * 640;
-    TouchBoundTop = (-screens[6].position[1] + 1) * 360;
-    TouchBoundBottom = (-screens[4].position[1] + 1) * 360;
+    TouchBoundLeft = screens[6].position[0];
+    TouchBoundRight = screens[4].position[0];
+    TouchBoundTop = screens[6].position[1];
+    TouchBoundBottom = screens[4].position[1];
 
     for (int i = 0; i < Config::ScreenRotation; i++)
     {
@@ -514,6 +623,12 @@ void SetScreenLayout()
             memcpy(screens[k + 3].position, copy[k    ].position, size);
         }
         delete(copy);
+    }
+
+    if (!Config::ScreenFilter)
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
 
     glBufferData(GL_ARRAY_BUFFER, sizeof(screens), screens, GL_DYNAMIC_DRAW);

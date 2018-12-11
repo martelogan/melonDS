@@ -215,11 +215,11 @@ unsigned char *TexFromBMP(string filename)
 {
     FILE *bmp = fopen(filename.c_str(), "rb");
 
-    unsigned char info[54];
-    fread(info, sizeof(unsigned char), 54, bmp);
+    unsigned char header[54];
+    fread(header, sizeof(unsigned char), 54, bmp);
+    int width = *(int*)&header[18];
+    int height = *(int*)&header[22];
 
-    int width = *(int*)&info[18];
-    int height = *(int*)&info[22];
     unsigned char *data = new unsigned char[width * height * 3];
     fread(data, sizeof(unsigned char), width * height * 3, bmp);
 
@@ -642,6 +642,9 @@ void AdvFrame(void *args)
 
 void FillAudioBuffer()
 {
+    // 1440 samples seems to be the sweet spot for audout
+    // which is 984 samples at the original sample rate
+
     s16 buf_in[984 * 2];
     s16 *buf_out = (s16*)BufferData;
 
@@ -767,11 +770,11 @@ int main(int argc, char **argv)
                 mutexLock(&EmuMutex);
                 NDS::DoSavestate(state);
                 mutexUnlock(&EmuMutex);
+
+                if (Config::SavestateRelocSRAM)
+                    NDS::RelocateSave(const_cast<char*>(statesrampath.c_str()), pressed & KEY_L);
             }
             delete state;
-
-            if (Config::SavestateRelocSRAM)
-                NDS::RelocateSave(const_cast<char*>(statesrampath.c_str()), pressed & KEY_L);
         }
 
         for (int i = 0; i < 12; i++)

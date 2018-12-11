@@ -456,15 +456,53 @@ void SetScreenLayout()
 
     if (Config::ScreenLayout == 1)
     {
-        height_top = height_bot = 360 - gap / 2;
-        if (Config::ScreenRotation % 2 == 0)
-            width_top = width_bot = height_top * 4 / 3;
+        if (Config::ScreenSizing == 0)
+        {
+            height_top = height_bot = 360 - gap / 2;
+            if (Config::ScreenRotation % 2 == 0)
+                width_top = width_bot = height_top * 4 / 3;
+            else
+                width_top = width_bot = height_top * 3 / 4;
+        }
+        else if (Config::ScreenSizing == 1)
+        {
+            if (Config::ScreenRotation % 2 == 0)
+            {
+                width_bot = 256;
+                height_bot = 192;
+                height_top = 720 - height_bot - gap;
+                width_top = height_top * 4 / 3;
+            }
+            else
+            {
+                width_bot = 192;
+                height_bot = 256;
+                height_top = 720 - height_bot - gap;
+                width_top = height_top * 3 / 4;
+            }
+        }
         else
-            width_top = width_bot = height_top * 3 / 4;
+        {
+            if (Config::ScreenRotation % 2 == 0)
+            {
+                width_top = 256;
+                height_top = 192;
+                height_bot = 720 - height_top - gap;
+                width_bot = height_bot * 4 / 3;
+            }
+            else
+            {
+                width_bot = 192;
+                height_bot = 256;
+                height_top = 720 - height_bot - gap;
+                width_top = height_top * 3 / 4;
+            }
+        }
 
-        offsetX_top = offsetX_bot = 640 - width_top / 2;
+        offsetX_top = 640 - width_top / 2;
+        offsetX_bot = 640 - width_bot / 2;
         offsetY_top = 0;
-        offsetY_bot = 720 - height_top;
+        offsetY_bot = 720 - height_bot;
     }
     else
     {
@@ -484,32 +522,8 @@ void SetScreenLayout()
         }
 
         offsetY_top = offsetY_bot = 360 - height_top / 2;
-    }
 
-    if (Config::ScreenSizing == 1)
-    {
-        if (Config::ScreenLayout == 1)
-        {
-            if (Config::ScreenRotation % 2 == 0)
-            {
-                width_bot = 256;
-                height_bot = 192;
-                height_top = 720 - height_bot - gap;
-                width_top = height_top * 4 / 3;
-            }
-            else
-            {
-                width_bot = 192;
-                height_bot = 256;
-                height_top = 720 - height_bot - gap;
-                width_top = height_top * 3 / 4;
-            }
-
-            offsetX_top = 640 - width_top / 2;
-            offsetX_bot = 640 - width_bot / 2;
-            offsetY_bot = 720 - height_bot;
-        }
-        else
+        if (Config::ScreenSizing == 1)
         {
             if (Config::ScreenRotation % 2 == 0)
             {
@@ -521,43 +535,19 @@ void SetScreenLayout()
                 height_top = width_top * 3 / 4;
                 offsetX_top = 640 - (width_bot + width_top + gap) / 2;
                 offsetX_bot = offsetX_top + width_top + gap;
-                offsetY_top = (720 - height_top) / 2;
+                offsetY_top = 360 - height_top / 2;
                 offsetY_bot = offsetY_top + height_top - height_bot;
             }
             else
             {
                 width_bot = 192;
                 height_bot = 256;
-                offsetY_bot = 720 - height_bot;
                 offsetX_top += (width_top - width_bot) / 2;
                 offsetX_bot += (width_top - width_bot) / 2;
+                offsetY_bot = 720 - height_bot;
             }
         }
-    }
-    else if (Config::ScreenSizing == 2)
-    {
-        if (Config::ScreenLayout == 1)
-        {
-            if (Config::ScreenRotation % 2 == 0)
-            {
-                width_top = 256;
-                height_top = 192;
-                height_bot = 720 - height_top - gap;
-                width_bot = height_bot * 4 / 3;
-            }
-            else
-            {
-                width_bot = 192;
-                height_bot = 256;
-                height_top = 720 - height_bot - gap;
-                width_top = height_top * 3 / 4;
-            }
-
-            offsetX_bot = 640 - width_bot / 2;
-            offsetX_top = 640 - width_top / 2;
-            offsetY_bot = 720 - height_bot;
-        }
-        else
+        else if (Config::ScreenSizing == 2)
         {
             if (Config::ScreenRotation % 2 == 0)
             {
@@ -569,16 +559,16 @@ void SetScreenLayout()
                 height_bot = width_bot * 3 / 4;
                 offsetX_top = 640 - (width_bot + width_top + gap) / 2;
                 offsetX_bot = offsetX_top + width_top + gap;
-                offsetY_bot = (720 - height_bot) / 2;
+                offsetY_bot = 360 - height_bot / 2;
                 offsetY_top = offsetY_bot + height_bot - height_top;
             }
             else
             {
                 width_top = 192;
                 height_top = 256;
-                offsetY_top = 720 - height_top;
                 offsetX_top += (width_bot - width_top) / 2;
                 offsetX_bot -= (width_bot - width_top) / 2;
+                offsetY_top = 720 - height_top;
             }
         }
     }

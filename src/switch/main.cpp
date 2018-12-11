@@ -107,7 +107,7 @@ const int charWidth[] =
     17, 12, 18, 17, 10, 20, 22, 19, 22, 20,
     10, 22, 20,  9, 12, 19,  9, 30, 20, 22,
     22, 22, 13, 17, 13, 20, 17, 29, 18, 18,
-    17, 10,  9, 10, 25, 32, 27, 32,  9, 12
+    17, 10,  9, 10, 25, 32, 40, 40, 40, 40
 };
 
 typedef struct
@@ -354,7 +354,7 @@ string Menu()
             DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false);
             DrawLine(30, 88, 1250, 88, false);
             DrawLine(30, 648, 1250, 648, false);
-            DrawLine(90, 130, 1190, 130, true);
+            DrawLine(90, 124, 1190, 124, true);
 
             hidScanInput();
             u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
@@ -384,12 +384,15 @@ string Menu()
 
                 for (unsigned int i = 0; i < OptionDisplay.size(); i++)
                 {
-                    DrawString(OptionDisplay[i], 105, 146 + i * 70, 38, i == selection);
-                    DrawStringFromRight(OptionValuesDisplay[i][*OptionValues[i]], 1175, 146 + i * 70, 38, i == selection);
-                    DrawLine(90, 200 + i * 70, 1190, 200 + i * 70, true);
+                    if (i < 7)
+                    {
+                        DrawString(OptionDisplay[i], 105, 140 + i * 70, 38, i == selection);
+                        DrawStringFromRight(OptionValuesDisplay[i][*OptionValues[i]], 1175, 143 + i * 70, 32, i == selection);
+                        DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
+                    }
                 }
 
-                DrawStringFromRight("(X) Files    (A) OK", 1208, 665, 36, false);
+                DrawStringFromRight("‚ Files     € OK", 1218, 667, 34, false);
             }
             else
             {
@@ -420,11 +423,14 @@ string Menu()
 
                 for (unsigned int i = 0; i < files.size(); i++)
                 {
-                    DrawString(files[i], 105, 146 + i * 70, 38, i == selection);
-                    DrawLine(90, 200 + i * 70, 1190, 200 + i * 70, true);
+                    if (i < 7)
+                    {
+                        DrawString(files[i], 105, 140 + i * 70, 38, i == selection);
+                        DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
+                    }
                 }
 
-                DrawStringFromRight("(X) Options    (B) Back    (A) OK", 1208, 665, 36, false);
+                DrawStringFromRight("‚ Options      Back     € OK", 1218, 667, 34, false);
             }
 
             eglSwapBuffers(Display, Surface);

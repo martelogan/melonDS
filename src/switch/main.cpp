@@ -85,6 +85,7 @@ ColorSetId MenuTheme;
 unsigned char *Font, *FontColor;
 
 char *EmuDirectory;
+string ROMPath, SRAMPath, StatePath, StateSRAMPath;
 
 u8 *BufferData;
 AudioOutBuffer AudioBuffer, *ReleasedBuffer;
@@ -92,7 +93,8 @@ AudioOutBuffer AudioBuffer, *ReleasedBuffer;
 u32 *Framebuffer;
 unsigned int TouchBoundLeft, TouchBoundRight, TouchBoundTop, TouchBoundBottom;
 
-Mutex EmuMutex;
+Thread core, audio;
+bool paused;
 
 EGLDisplay Display;
 EGLContext Context;
@@ -316,17 +318,22 @@ void DrawLine(float x1, float y1, float x2, float y2, bool color)
     glDrawArrays(GL_LINES, 0, 2);
 }
 
-string Menu()
+void MainMenu()
 {
-    string rompath = "sdmc:/";
+    if (MenuTheme == ColorSetId_Light)
+        glClearColor((float)235 / 255, (float)235 / 255, (float)235 / 255, 1.0f);
+    else
+        glClearColor((float)45 / 255, (float)45 / 255, (float)45 / 255, 1.0f);
+
+    ROMPath = "sdmc:/";
     bool options = false;
 
-    while (rompath.find(".nds", (rompath.length() - 4)) == string::npos)
+    while (ROMPath.find(".nds", (ROMPath.length() - 4)) == string::npos)
     {
         unsigned int selection = 0;
         vector<string> files;
 
-        DIR *dir = opendir(rompath.c_str());
+        DIR *dir = opendir(ROMPath.c_str());
         dirent *entry;
         while ((entry = readdir(dir)))
         {
@@ -396,12 +403,12 @@ string Menu()
             {
                 if (pressed & KEY_A && files.size() > 0)
                 {
-                    rompath += "/" + files[selection];
+                    ROMPath += "/" + files[selection];
                     break;
                 }
-                else if (pressed & KEY_B && rompath != "sdmc:/")
+                else if (pressed & KEY_B && ROMPath != "sdmc:/")
                 {
-                    rompath = rompath.substr(0, rompath.rfind("/"));
+                    ROMPath = ROMPath.substr(0, ROMPath.rfind("/"));
                     break;
                 }
                 else if (pressed & KEY_UP && selection > 0)
@@ -420,7 +427,8 @@ string Menu()
                 }
                 else if (pressed & KEY_PLUS)
                 {
-                    return "";
+                    ROMPath = "";
+                    return;
                 }
 
                 for (unsigned int i = 0; i < 7; i++)
@@ -446,8 +454,6 @@ string Menu()
             eglSwapBuffers(Display, Surface);
         }
     }
-
-    return rompath;
 }
 
 bool LocalFileExists(const char *name)
@@ -650,17 +656,13 @@ void SetScreenLayout()
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 }
 
-void AdvFrame(void *args)
+void RunCore(void *args)
 {
-    while (true)
+    while (!paused)
     {
         chrono::steady_clock::time_point start = chrono::steady_clock::now();
-
-        mutexLock(&EmuMutex);
         NDS::RunFrame();
-        mutexUnlock(&EmuMutex);
         memcpy(Framebuffer, GPU::Framebuffer, 256 * 384 * 4);
-
         while (chrono::duration_cast<chrono::duration<double>>(chrono::steady_clock::now() - start).count() < (float)1 / 60);
     }
 }
@@ -709,10 +711,58 @@ void FillAudioBuffer()
 
 void PlayAudio(void *args)
 {
-    while (true)
+    while (!paused)
     {
         FillAudioBuffer();
         audoutPlayBuffer(&AudioBuffer, &ReleasedBuffer);
+    }
+}
+
+void PauseMenu()
+{
+    paused = true;
+    appletUnlockExit();
+
+    if (MenuTheme == ColorSetId_Light)
+        glClearColor((float)235 / 255, (float)235 / 255, (float)235 / 255, 1.0f);
+    else
+        glClearColor((float)45 / 255, (float)45 / 255, (float)45 / 255, 1.0f);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    while (paused)
+    {
+        glClear(GL_COLOR_BUFFER_BIT);
+        DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false);
+        DrawLine(30, 88, 1250, 88, false);
+        DrawLine(30, 648, 1250, 648, false);
+        DrawStringFromRight("€ Resume", 1218, 667, 34, false);
+        eglSwapBuffers(Display, Surface);
+
+        hidScanInput();
+        u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
+        if (pressed & KEY_L || pressed & KEY_R)
+        {
+            Savestate* state = new Savestate(const_cast<char*>(StatePath.c_str()), pressed & KEY_L);
+            if (!state->Error)
+            {
+                NDS::DoSavestate(state);
+                if (Config::SavestateRelocSRAM)
+                    NDS::RelocateSave(const_cast<char*>(StateSRAMPath.c_str()), pressed & KEY_L);
+            }
+            delete state;
+        }
+        if (pressed & KEY_A || pressed & KEY_L || pressed & KEY_R)
+        {
+            paused = false;
+            appletLockExit();
+            SetScreenLayout();
+            threadCreate(&core, RunCore, NULL, 0x80000, 0x30, 1);
+            threadStart(&core);
+            threadCreate(&audio, PlayAudio, NULL, 0x80000, 0x30, 0);
+            threadStart(&audio);
+        }
     }
 }
 
@@ -727,29 +777,27 @@ int main(int argc, char **argv)
     romfsInit();
     if (MenuTheme == ColorSetId_Light)
     {
-        glClearColor((float)235 / 255, (float)235 / 255, (float)235 / 255, 1.0f);
         Font = TexFromBMP("romfs:/lightfont.bmp");
         FontColor = TexFromBMP("romfs:/lightfont-color.bmp");
     }
     else
     {
-        glClearColor((float)45 / 255, (float)45 / 255, (float)45 / 255, 1.0f);
         Font = TexFromBMP("romfs:/darkfont.bmp");
         FontColor = TexFromBMP("romfs:/darkfont-color.bmp");
     }
     romfsExit();
 
-    string rompath = Menu();
-    if (rompath == "")
+    MainMenu();
+    if (ROMPath == "")
     {
         DeInitRenderer();
         return 0;
     }
 
-    string srampath = rompath.substr(0, rompath.rfind(".")) + ".sav";
-    string statepath = rompath.substr(0, rompath.rfind(".")) + ".mln";
-    string statesrampath = statepath + ".sav";
     EmuDirectory = (char*)"sdmc:/switch/melonds";
+    SRAMPath = ROMPath.substr(0, ROMPath.rfind(".")) + ".sav";
+    StatePath = ROMPath.substr(0, ROMPath.rfind(".")) + ".mln";
+    StateSRAMPath = StatePath + ".sav";
 
     Config::Load();
     if (!LocalFileExists("bios7.bin") || !LocalFileExists("bios9.bin") || !LocalFileExists("firmware.bin"))
@@ -791,13 +839,9 @@ int main(int argc, char **argv)
         pcvSetClockRate(PcvModule_Cpu, 1785000000);
 
     NDS::Init();
-    NDS::LoadROM(rompath.c_str(), srampath.c_str(), Config::DirectBoot);
+    NDS::LoadROM(ROMPath.c_str(), SRAMPath.c_str(), Config::DirectBoot);
 
     SetScreenLayout();
-
-    Thread main;
-    threadCreate(&main, AdvFrame, NULL, 0x80000, 0x30, 1);
-    threadStart(&main);
 
     audoutInitialize();
     audoutStartAudioOut();
@@ -809,7 +853,8 @@ int main(int argc, char **argv)
     AudioBuffer.data_size = 1440 * 2 * 2;
     AudioBuffer.data_offset = 0;
 
-    Thread audio;
+    threadCreate(&core, RunCore, NULL, 0x80000, 0x30, 1);
+    threadStart(&core);
     threadCreate(&audio, PlayAudio, NULL, 0x80000, 0x30, 0);
     threadStart(&audio);
 
@@ -824,19 +869,7 @@ int main(int argc, char **argv)
         u32 released = hidKeysUp(CONTROLLER_P1_AUTO);
 
         if (pressed & KEY_L || pressed & KEY_R)
-        {
-            Savestate* state = new Savestate(const_cast<char*>(statepath.c_str()), pressed & KEY_L);
-            if (!state->Error)
-            {
-                mutexLock(&EmuMutex);
-                NDS::DoSavestate(state);
-                mutexUnlock(&EmuMutex);
-
-                if (Config::SavestateRelocSRAM)
-                    NDS::RelocateSave(const_cast<char*>(statesrampath.c_str()), pressed & KEY_L);
-            }
-            delete state;
-        }
+            PauseMenu();
 
         for (int i = 0; i < 12; i++)
         {

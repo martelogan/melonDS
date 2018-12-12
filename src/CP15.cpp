@@ -254,7 +254,7 @@ void ARMv5::UpdateRegionTimings(u32 addrstart, u32 addrend)
 
         if (pu & 0x40)
         {
-            MemTimings[i][0] = 0xFF;//kCodeCacheTiming;
+            MemTimings[i][0] = kCodeCacheTiming;
         }
         else
         {

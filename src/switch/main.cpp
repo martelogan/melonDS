@@ -318,21 +318,6 @@ void DrawLine(float x1, float y1, float x2, float y2, bool color)
 
 string Menu()
 {
-    romfsInit();
-    if (MenuTheme == ColorSetId_Light)
-    {
-        glClearColor((float)235 / 255, (float)235 / 255, (float)235 / 255, 1.0f);
-        Font = TexFromBMP("romfs:/lightfont.bmp");
-        FontColor = TexFromBMP("romfs:/lightfont-color.bmp");
-    }
-    else
-    {
-        glClearColor((float)45 / 255, (float)45 / 255, (float)45 / 255, 1.0f);
-        Font = TexFromBMP("romfs:/darkfont.bmp");
-        FontColor = TexFromBMP("romfs:/darkfont-color.bmp");
-    }
-    romfsExit();
-
     string rompath = "sdmc:/";
     bool options = false;
 
@@ -739,6 +724,21 @@ int main(int argc, char **argv)
     setsysGetColorSetId(&MenuTheme);
     setsysExit();
 
+    romfsInit();
+    if (MenuTheme == ColorSetId_Light)
+    {
+        glClearColor((float)235 / 255, (float)235 / 255, (float)235 / 255, 1.0f);
+        Font = TexFromBMP("romfs:/lightfont.bmp");
+        FontColor = TexFromBMP("romfs:/lightfont-color.bmp");
+    }
+    else
+    {
+        glClearColor((float)45 / 255, (float)45 / 255, (float)45 / 255, 1.0f);
+        Font = TexFromBMP("romfs:/darkfont.bmp");
+        FontColor = TexFromBMP("romfs:/darkfont-color.bmp");
+    }
+    romfsExit();
+
     string rompath = Menu();
     if (rompath == "")
     {
@@ -755,13 +755,27 @@ int main(int argc, char **argv)
     if (!LocalFileExists("bios7.bin") || !LocalFileExists("bios9.bin") || !LocalFileExists("firmware.bin"))
     {
         glClear(GL_COLOR_BUFFER_BIT);
-        DrawString("One or more of the following required files don't exist or couldn't be accessed:", 0, 0, 38, false);
-        DrawString("bios7.bin -- ARM7 BIOS", 0, 38, 38, false);
-        DrawString("bios9.bin -- ARM9 BIOS", 0, 38 * 2, 38, false);
-        DrawString("firmware.bin -- firmware image", 0, 38 * 3, 38, false);
-        DrawString("Dump the files from your DS and place them in sdmc:/switch/melonds", 0, 38 * 4, 38, false);
+        DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false);
+        DrawLine(30, 88, 1250, 88, false);
+        DrawLine(30, 648, 1250, 648, false);
+        DrawStringFromRight("ƒ Exit", 1218, 667, 34, false);
+        DrawString("One or more of the following required files don't exist or couldn't be accessed:", 90, 124, 38, false);
+        DrawString("bios7.bin -- ARM7 BIOS", 90, 124 + 38, 38, false);
+        DrawString("bios9.bin -- ARM9 BIOS", 90, 124 + 38 * 2, 38, false);
+        DrawString("firmware.bin -- firmware image", 90, 124 + 38 * 3, 38, false);
+        DrawString("Dump the files from your DS and place them in sdmc:/switch/melonds", 90, 124 + 38 * 4, 38, false);
         eglSwapBuffers(Display, Surface);
-        while (true);
+
+        while (true)
+        {
+            hidScanInput();
+            u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
+            if (pressed & KEY_PLUS)
+            {
+                DeInitRenderer();
+                return 0;
+            }
+        }
     }
 
     appletLockExit();

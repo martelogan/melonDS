@@ -37,6 +37,7 @@
 #include "../GPU.h"
 #include "../NDS.h"
 #include "../SPU.h"
+#include "../melon_fopen.h"
 #include "../version.h"
 
 using namespace std;
@@ -82,6 +83,8 @@ int *OptionValues[] =
 
 ColorSetId MenuTheme;
 unsigned char *Font, *FontColor;
+
+char *EmuDirectory;
 
 u8 *BufferData;
 AudioOutBuffer AudioBuffer, *ReleasedBuffer;
@@ -213,7 +216,7 @@ void DeInitRenderer()
 
 unsigned char *TexFromBMP(string filename)
 {
-    FILE *bmp = fopen(filename.c_str(), "rb");
+    FILE *bmp = melon_fopen(filename.c_str(), "rb");
 
     unsigned char header[54];
     fread(header, sizeof(unsigned char), 54, bmp);
@@ -438,6 +441,15 @@ string Menu()
     }
 
     return rompath;
+}
+
+bool LocalFileExists(const char *name)
+{
+    FILE *file = melon_fopen_local(name, "rb");
+    if (!file)
+        return false;
+    fclose(file);
+    return true;
 }
 
 void SetScreenLayout()
@@ -705,13 +717,14 @@ int main(int argc, char **argv)
     setsysGetColorSetId(&MenuTheme);
     setsysExit();
 
+    EmuDirectory = (char*)"sdmc:/switch/melonds";
     string rompath = Menu();
     string srampath = rompath.substr(0, rompath.rfind(".")) + ".sav";
     string statepath = rompath.substr(0, rompath.rfind(".")) + ".mln";
     string statesrampath = statepath + ".sav";
 
     Config::Load();
-    if (!Config::HasConfigFile("bios7.bin") || !Config::HasConfigFile("bios9.bin") || !Config::HasConfigFile("firmware.bin"))
+    if (!LocalFileExists("bios7.bin") || !LocalFileExists("bios9.bin") || !LocalFileExists("firmware.bin"))
     {
         glClear(GL_COLOR_BUFFER_BIT);
         DrawString("One or more of the following required files don't exist or couldn't be accessed:", 0, 0, 38, false);

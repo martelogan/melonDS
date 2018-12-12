@@ -387,12 +387,20 @@ string Menu()
                     break;
                 }
 
-                for (unsigned int i = 0; i < OptionDisplay.size(); i++)
+                for (unsigned int i = 0; i < 7; i++)
                 {
-                    if (i < 7)
+                    if (i < OptionDisplay.size())
                     {
-                        DrawString(OptionDisplay[i], 105, 140 + i * 70, 38, i == selection);
-                        DrawStringFromRight(OptionValuesDisplay[i][*OptionValues[i]], 1175, 143 + i * 70, 32, i == selection);
+                        unsigned int row;
+                        if (selection < 4 || OptionDisplay.size() <= 7)
+                            row = i;
+                        else if (selection > OptionDisplay.size() - 4)
+                            row = OptionDisplay.size() - 7 + i;
+                        else
+                            row = i + selection - 3;
+
+                        DrawString(OptionDisplay[row], 105, 140 + i * 70, 38, row == selection);
+                        DrawStringFromRight(OptionValuesDisplay[row][*OptionValues[row]], 1175, 143 + i * 70, 32, row == selection);
                         DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
                     }
                 }
@@ -426,11 +434,19 @@ string Menu()
                     break;
                 }
 
-                for (unsigned int i = 0; i < files.size(); i++)
+                for (unsigned int i = 0; i < 7; i++)
                 {
-                    if (i < 7)
+                    if (i < files.size())
                     {
-                        DrawString(files[i], 105, 140 + i * 70, 38, i == selection);
+                        unsigned int row;
+                        if (selection < 4 || files.size() <= 7)
+                            row = i;
+                        else if (selection > OptionDisplay.size() - 4)
+                            row = OptionDisplay.size() - 7 + i;
+                        else
+                            row = i + selection - 3;
+
+                        DrawString(files[row], 105, 140 + i * 70, 38, row == selection);
                         DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
                     }
                 }

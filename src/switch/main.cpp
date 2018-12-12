@@ -263,6 +263,8 @@ void DrawChar(char c, float x, float y, int size, bool color)
     glBufferData(GL_ARRAY_BUFFER, sizeof(character), character, GL_DYNAMIC_DRAW);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 48, 48, 0, GL_BGR, GL_UNSIGNED_BYTE, tex);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+    delete[] tex;
 }
 
 void DrawString(string str, float x, float y, int size, bool color)
@@ -610,7 +612,7 @@ void SetScreenLayout()
         memcpy(copy, screens, sizeof(screens));
         memcpy(screens, &copy[4], sizeof(screens) / 2);
         memcpy(&screens[4], copy, sizeof(screens) / 2);
-        delete copy;
+        delete[] copy;
     }
 
     TouchBoundLeft = screens[6].position[0];
@@ -630,7 +632,7 @@ void SetScreenLayout()
             memcpy(screens[k + 2].position, copy[k + 3].position, size);
             memcpy(screens[k + 3].position, copy[k    ].position, size);
         }
-        delete(copy);
+        delete[] copy;
     }
 
     if (!Config::ScreenFilter)

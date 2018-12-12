@@ -433,6 +433,10 @@ string Menu()
                     options = true;
                     break;
                 }
+                else if (pressed & KEY_PLUS)
+                {
+                    return "";
+                }
 
                 for (unsigned int i = 0; i < 7; i++)
                 {
@@ -451,7 +455,7 @@ string Menu()
                     }
                 }
 
-                DrawStringFromRight("‚ Options      Back     € OK", 1218, 667, 34, false);
+                DrawStringFromRight("ƒ Exit     ‚ Options      Back     € OK", 1218, 667, 34, false);
             }
 
             eglSwapBuffers(Display, Surface);
@@ -735,11 +739,17 @@ int main(int argc, char **argv)
     setsysGetColorSetId(&MenuTheme);
     setsysExit();
 
-    EmuDirectory = (char*)"sdmc:/switch/melonds";
     string rompath = Menu();
+    if (rompath == "")
+    {
+        DeInitRenderer();
+        return 0;
+    }
+
     string srampath = rompath.substr(0, rompath.rfind(".")) + ".sav";
     string statepath = rompath.substr(0, rompath.rfind(".")) + ".mln";
     string statesrampath = statepath + ".sav";
+    EmuDirectory = (char*)"sdmc:/switch/melonds";
 
     Config::Load();
     if (!LocalFileExists("bios7.bin") || !LocalFileExists("bios9.bin") || !LocalFileExists("firmware.bin"))

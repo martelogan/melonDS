@@ -42,45 +42,6 @@
 
 using namespace std;
 
-vector<const char*> OptionDisplay =
-{
-    "Boot game directly",
-    "Threaded 3D renderer",
-    "Separate savefiles from savestates",
-    "Screen rotation",
-    "Mid-screen gap",
-    "Screen layout",
-    "Screen sizing",
-    "Screen filtering",
-    "Switch overclock"
-};
-
-vector<vector<const char*>> OptionValuesDisplay =
-{
-    { "Off", "On" },
-    { "Off", "On" },
-    { "Off", "On" },
-    { "0", "90", "180", "270" },
-    { "0 pixels", "1 pixel", "8 pixels", "64 pixels", "90 pixels", "128 pixels" },
-    { "Natural", "Vertical", "Horizontal" },
-    { "Even", "Emphasize top", "Emphasize bottom" },
-    { "Off", "On" },
-    { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" }
-};
-
-int *OptionValues[] =
-{
-    &Config::DirectBoot,
-    &Config::Threaded3D,
-    &Config::SavestateRelocSRAM,
-    &Config::ScreenRotation,
-    &Config::ScreenGap,
-    &Config::ScreenLayout,
-    &Config::ScreenSizing,
-    &Config::ScreenFilter,
-    &Config::SwitchOverclock
-};
-
 ColorSetId MenuTheme;
 unsigned char *Font, *FontColor;
 
@@ -100,6 +61,19 @@ EGLDisplay Display;
 EGLContext Context;
 EGLSurface Surface;
 GLuint Program, VertArrayObj, VertBufferObj, Texture;
+
+int *OptionValues[] =
+{
+    &Config::DirectBoot,
+    &Config::Threaded3D,
+    &Config::SavestateRelocSRAM,
+    &Config::ScreenRotation,
+    &Config::ScreenGap,
+    &Config::ScreenLayout,
+    &Config::ScreenSizing,
+    &Config::ScreenFilter,
+    &Config::SwitchOverclock
+};
 
 const int charWidth[] =
 {
@@ -320,6 +294,32 @@ void DrawLine(float x1, float y1, float x2, float y2, bool color)
 
 void OptionsMenu()
 {
+    vector<const char*> options =
+    {
+        "Boot game directly",
+        "Threaded 3D renderer",
+        "Separate savefiles from savestates",
+        "Screen rotation",
+        "Mid-screen gap",
+        "Screen layout",
+        "Screen sizing",
+        "Screen filtering",
+        "Switch overclock"
+    };
+
+    vector<vector<const char*>> optionvalues =
+    {
+        { "Off", "On" },
+        { "Off", "On" },
+        { "Off", "On" },
+        { "0", "90", "180", "270" },
+        { "0 pixels", "1 pixel", "8 pixels", "64 pixels", "90 pixels", "128 pixels" },
+        { "Natural", "Vertical", "Horizontal" },
+        { "Even", "Emphasize top", "Emphasize bottom" },
+        { "Off", "On" },
+        { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" }
+    };
+
     unsigned int selection = 0;
 
     while (true)
@@ -337,7 +337,7 @@ void OptionsMenu()
         if (pressed & KEY_A)
         {
             (*OptionValues[selection])++;
-            if (*OptionValues[selection] >= (int)OptionValuesDisplay[selection].size())
+            if (*OptionValues[selection] >= (int)optionvalues[selection].size())
                 *OptionValues[selection] = 0;
         }
         else if (pressed & KEY_B)
@@ -349,7 +349,7 @@ void OptionsMenu()
         {
             selection--;
         }
-        else if (pressed & KEY_DOWN && selection < OptionDisplay.size() - 1)
+        else if (pressed & KEY_DOWN && selection < options.size() - 1)
         {
             selection++;
         }
@@ -359,13 +359,13 @@ void OptionsMenu()
             unsigned int row;
             if (selection < 4)
                 row = i;
-            else if (selection > OptionDisplay.size() - 4)
-                row = OptionDisplay.size() - 7 + i;
+            else if (selection > options.size() - 4)
+                row = options.size() - 7 + i;
             else
                 row = i + selection - 3;
 
-            DrawString(OptionDisplay[row], 105, 140 + i * 70, 38, row == selection);
-            DrawStringFromRight(OptionValuesDisplay[row][*OptionValues[row]], 1175, 143 + i * 70, 32, row == selection);
+            DrawString(options[row], 105, 140 + i * 70, 38, row == selection);
+            DrawStringFromRight(optionvalues[row][*OptionValues[row]], 1175, 143 + i * 70, 32, row == selection);
             DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
         }
 
@@ -446,8 +446,8 @@ void FilesMenu()
                     unsigned int row;
                     if (selection < 4 || files.size() <= 7)
                         row = i;
-                    else if (selection > OptionDisplay.size() - 4)
-                        row = OptionDisplay.size() - 7 + i;
+                    else if (selection > files.size() - 4)
+                        row = files.size() - 7 + i;
                     else
                        row = i + selection - 3;
 

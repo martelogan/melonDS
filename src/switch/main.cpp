@@ -318,7 +318,62 @@ void DrawLine(float x1, float y1, float x2, float y2, bool color)
     glDrawArrays(GL_LINES, 0, 2);
 }
 
-void MainMenu()
+void OptionsMenu()
+{
+    unsigned int selection = 0;
+
+    while (true)
+    {
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false);
+        DrawLine(30, 88, 1250, 88, false);
+        DrawLine(30, 648, 1250, 648, false);
+        DrawLine(90, 124, 1190, 124, true);
+        DrawStringFromRight("Å Back     Ä OK", 1218, 667, 34, false);
+
+        hidScanInput();
+        u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
+        if (pressed & KEY_A)
+        {
+            (*OptionValues[selection])++;
+            if (*OptionValues[selection] >= (int)OptionValuesDisplay[selection].size())
+                *OptionValues[selection] = 0;
+        }
+        else if (pressed & KEY_B)
+        {
+            Config::Save();
+            break;
+        }
+        else if (pressed & KEY_UP && selection > 0)
+        {
+            selection--;
+        }
+        else if (pressed & KEY_DOWN && selection < OptionDisplay.size() - 1)
+        {
+            selection++;
+        }
+
+        for (int i = 0; i < 7; i++)
+        {
+            unsigned int row;
+            if (selection < 4)
+                row = i;
+            else if (selection > OptionDisplay.size() - 4)
+                row = OptionDisplay.size() - 7 + i;
+            else
+                row = i + selection - 3;
+
+            DrawString(OptionDisplay[row], 105, 140 + i * 70, 38, row == selection);
+            DrawStringFromRight(OptionValuesDisplay[row][*OptionValues[row]], 1175, 143 + i * 70, 32, row == selection);
+            DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
+        }
+
+        eglSwapBuffers(Display, Surface);
+    }
+}
+
+void FilesMenu()
 {
     if (MenuTheme == ColorSetId_Light)
         glClearColor((float)235 / 255, (float)235 / 255, (float)235 / 255, 1.0f);
@@ -326,7 +381,6 @@ void MainMenu()
         glClearColor((float)45 / 255, (float)45 / 255, (float)45 / 255, 1.0f);
 
     ROMPath = "sdmc:/";
-    bool options = false;
 
     while (ROMPath.find(".nds", (ROMPath.length() - 4)) == string::npos)
     {
@@ -352,102 +406,54 @@ void MainMenu()
             DrawLine(30, 88, 1250, 88, false);
             DrawLine(30, 648, 1250, 648, false);
             DrawLine(90, 124, 1190, 124, true);
+            DrawStringFromRight("É Exit     Ç Options     Å Back     Ä OK", 1218, 667, 34, false);
 
             hidScanInput();
             u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
-
-            if (options)
+            if (pressed & KEY_A && files.size() > 0)
             {
-                if (pressed & KEY_A)
-                {
-                    (*OptionValues[selection])++;
-                    if (*OptionValues[selection] >= (int)OptionValuesDisplay[selection].size())
-                        *OptionValues[selection] = 0;
-                }
-                else if (pressed & KEY_UP && selection > 0)
-                {
-                    selection--;
-                }
-                else if (pressed & KEY_DOWN && selection < OptionDisplay.size() - 1)
-                {
-                    selection++;
-                }
-                else if (pressed & KEY_X)
-                {
-                    Config::Save();
-                    options = false;
-                    break;
-                }
-
-                for (unsigned int i = 0; i < 7; i++)
-                {
-                    if (i < OptionDisplay.size())
-                    {
-                        unsigned int row;
-                        if (selection < 4 || OptionDisplay.size() <= 7)
-                            row = i;
-                        else if (selection > OptionDisplay.size() - 4)
-                            row = OptionDisplay.size() - 7 + i;
-                        else
-                            row = i + selection - 3;
-
-                        DrawString(OptionDisplay[row], 105, 140 + i * 70, 38, row == selection);
-                        DrawStringFromRight(OptionValuesDisplay[row][*OptionValues[row]], 1175, 143 + i * 70, 32, row == selection);
-                        DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
-                    }
-                }
-
-                DrawStringFromRight("Ç Files     Ä OK", 1218, 667, 34, false);
+                ROMPath += "/" + files[selection];
+                break;
             }
-            else
+            else if (pressed & KEY_B && ROMPath != "sdmc:/")
             {
-                if (pressed & KEY_A && files.size() > 0)
-                {
-                    ROMPath += "/" + files[selection];
-                    break;
-                }
-                else if (pressed & KEY_B && ROMPath != "sdmc:/")
-                {
-                    ROMPath = ROMPath.substr(0, ROMPath.rfind("/"));
-                    break;
-                }
-                else if (pressed & KEY_UP && selection > 0)
-                {
-                    selection--;
-                }
-                else if (pressed & KEY_DOWN && selection < files.size() - 1)
-                {
-                    selection++;
-                }
-                else if (pressed & KEY_X)
-                {
-                    options = true;
-                    break;
-                }
-                else if (pressed & KEY_PLUS)
-                {
-                    ROMPath = "";
-                    return;
-                }
+                ROMPath = ROMPath.substr(0, ROMPath.rfind("/"));
+                break;
+            }
+            else if (pressed & KEY_UP && selection > 0)
+            {
+                selection--;
+            }
+            else if (pressed & KEY_DOWN && selection < files.size() - 1)
+            {
+                selection++;
+            }
+            else if (pressed & KEY_X)
+            {
+                OptionsMenu();
+                selection = 0;
+            }
+            else if (pressed & KEY_PLUS)
+            {
+                ROMPath = "";
+                return;
+            }
 
-                for (unsigned int i = 0; i < 7; i++)
+            for (unsigned int i = 0; i < 7; i++)
+            {
+                if (i < files.size())
                 {
-                    if (i < files.size())
-                    {
-                        unsigned int row;
-                        if (selection < 4 || files.size() <= 7)
-                            row = i;
-                        else if (selection > OptionDisplay.size() - 4)
-                            row = OptionDisplay.size() - 7 + i;
-                        else
-                            row = i + selection - 3;
+                    unsigned int row;
+                    if (selection < 4 || files.size() <= 7)
+                        row = i;
+                    else if (selection > OptionDisplay.size() - 4)
+                        row = OptionDisplay.size() - 7 + i;
+                    else
+                       row = i + selection - 3;
 
-                        DrawString(files[row], 105, 140 + i * 70, 38, row == selection);
-                        DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
-                    }
+                    DrawString(files[row], 105, 140 + i * 70, 38, row == selection);
+                    DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
                 }
-
-                DrawStringFromRight("É Exit     Ç Options     Å Back     Ä OK", 1218, 667, 34, false);
             }
 
             eglSwapBuffers(Display, Surface);
@@ -707,7 +713,7 @@ void PlayAudio(void *args)
     }
 }
 
-void StartCore()
+void StartCore(bool resume)
 {
     SRAMPath = ROMPath.substr(0, ROMPath.rfind(".")) + ".sav";
     StatePath = ROMPath.substr(0, ROMPath.rfind(".")) + ".mln";
@@ -718,10 +724,15 @@ void StartCore()
     int clockspeeds[] = { 1020000000, 1224000000, 1581000000, 1785000000 };
     pcvSetClockRate(PcvModule_Cpu, clockspeeds[Config::SwitchOverclock]);
 
-    NDS::Init();
-    NDS::LoadROM(ROMPath.c_str(), SRAMPath.c_str(), Config::DirectBoot);
+    if (!resume)
+    {
+        NDS::Init();
+        NDS::LoadROM(ROMPath.c_str(), SRAMPath.c_str(), Config::DirectBoot);
+    }
 
     SetScreenLayout();
+
+    paused = false;
 
     threadCreate(&core, RunCore, NULL, 0x80000, 0x30, 1);
     threadStart(&core);
@@ -742,48 +753,74 @@ void PauseMenu()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+    vector<const char*> items = 
+    {
+        "Resume",
+        "Save state",
+        "Load state",
+        "Options",
+        "File browser"
+    };
+
     while (paused)
     {
-        glClear(GL_COLOR_BUFFER_BIT);
-        DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false);
-        DrawLine(30, 88, 1250, 88, false);
-        DrawLine(30, 648, 1250, 648, false);
-        DrawStringFromRight("É Files     Ä Resume", 1218, 667, 34, false);
-        eglSwapBuffers(Display, Surface);
+        unsigned int selection = 0;
 
-        hidScanInput();
-        u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
-        if (pressed & KEY_PLUS)
+        while (true)
         {
-            NDS::DeInit();
+            glClear(GL_COLOR_BUFFER_BIT);
+            DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false);
+            DrawLine(30, 88, 1250, 88, false);
+            DrawLine(30, 648, 1250, 648, false);
+            DrawLine(90, 124, 1190, 124, true);
+            DrawStringFromRight("Ä OK", 1218, 667, 34, false);
+            for (unsigned int i = 0; i < items.size(); i++)
+            {
+                DrawString(items[i], 105, 140 + i * 70, 38, i == selection);
+                DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
+            }
+            eglSwapBuffers(Display, Surface);
 
-            MainMenu();
-            if (ROMPath == "")
+            hidScanInput();
+            u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
+            if (pressed & KEY_A)
                 break;
-
-            paused = false;
-            StartCore();
+            else if (pressed & KEY_UP && selection > 0)
+                selection--;
+            else if (pressed & KEY_DOWN && selection < items.size() - 1)
+                selection++;
         }
-        if (pressed & KEY_L || pressed & KEY_R)
+
+        if (selection == 0)
         {
-            Savestate* state = new Savestate(const_cast<char*>(StatePath.c_str()), pressed & KEY_L);
+            StartCore(true);
+        }
+        else if (selection == 1 || selection == 2)
+        {
+            Savestate* state = new Savestate(const_cast<char*>(StatePath.c_str()), selection == 1);
             if (!state->Error)
             {
                 NDS::DoSavestate(state);
                 if (Config::SavestateRelocSRAM)
-                    NDS::RelocateSave(const_cast<char*>(StateSRAMPath.c_str()), pressed & KEY_L);
+                    NDS::RelocateSave(const_cast<char*>(StateSRAMPath.c_str()), selection == 1);
             }
             delete state;
+
+            StartCore(true);
         }
-        if (pressed & KEY_A || pressed & KEY_L || pressed & KEY_R)
+        else if (selection == 3)
         {
-            paused = false;
-            appletLockExit();
-            SetScreenLayout();
-            threadCreate(&core, RunCore, NULL, 0x80000, 0x30, 1);
-            threadStart(&core);
-            threadCreate(&audio, PlayAudio, NULL, 0x80000, 0x30, 0);
-            threadStart(&audio);
+            OptionsMenu();
+        }
+        else if (selection == 4)
+        {
+            NDS::DeInit();
+
+            FilesMenu();
+            if (ROMPath == "")
+                break;
+
+            StartCore(false);
         }
     }
 }
@@ -812,7 +849,7 @@ int main(int argc, char **argv)
     EmuDirectory = (char*)"sdmc:/switch/melonds";
     Config::Load();
 
-    MainMenu();
+    FilesMenu();
     if (ROMPath == "")
     {
         DeInitRenderer();
@@ -857,7 +894,7 @@ int main(int argc, char **argv)
 
     pcvInitialize();
 
-    StartCore();
+    StartCore(false);
 
     Framebuffer = new u32[256 * 384];
 

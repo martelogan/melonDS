@@ -421,7 +421,6 @@ void MainMenu()
                 }
                 else if (pressed & KEY_X)
                 {
-                    Config::Load();
                     options = true;
                     break;
                 }
@@ -469,18 +468,8 @@ void SetScreenLayout()
 {
     float width_top, height_top, width_bot, height_bot, offsetX_top, offsetX_bot, offsetY_top, offsetY_bot, gap;
 
-    if (Config::ScreenGap == 0)
-        gap = 0;
-    else if (Config::ScreenGap == 1)
-        gap = 1;
-    else if (Config::ScreenGap == 2)
-        gap = 8;
-    else if (Config::ScreenGap == 3)
-        gap = 64;
-    else if (Config::ScreenGap == 4)
-        gap = 90;
-    else
-        gap = 128;
+    int gapsizes[] = { 0, 1, 8, 64, 90, 128 };
+    gap = gapsizes[Config::ScreenGap];
 
     if (Config::ScreenLayout == 0)
         Config::ScreenLayout = (Config::ScreenRotation % 2 == 0) ? 1 : 2;
@@ -718,6 +707,28 @@ void PlayAudio(void *args)
     }
 }
 
+void StartCore()
+{
+    SRAMPath = ROMPath.substr(0, ROMPath.rfind(".")) + ".sav";
+    StatePath = ROMPath.substr(0, ROMPath.rfind(".")) + ".mln";
+    StateSRAMPath = StatePath + ".sav";
+
+    appletLockExit();
+
+    int clockspeeds[] = { 1020000000, 1224000000, 1581000000, 1785000000 };
+    pcvSetClockRate(PcvModule_Cpu, clockspeeds[Config::SwitchOverclock]);
+
+    NDS::Init();
+    NDS::LoadROM(ROMPath.c_str(), SRAMPath.c_str(), Config::DirectBoot);
+
+    SetScreenLayout();
+
+    threadCreate(&core, RunCore, NULL, 0x80000, 0x30, 1);
+    threadStart(&core);
+    threadCreate(&audio, PlayAudio, NULL, 0x80000, 0x30, 0);
+    threadStart(&audio);
+}
+
 void PauseMenu()
 {
     paused = true;
@@ -737,11 +748,22 @@ void PauseMenu()
         DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false);
         DrawLine(30, 88, 1250, 88, false);
         DrawLine(30, 648, 1250, 648, false);
-        DrawStringFromRight("€ Resume", 1218, 667, 34, false);
+        DrawStringFromRight("ƒ Files     € Resume", 1218, 667, 34, false);
         eglSwapBuffers(Display, Surface);
 
         hidScanInput();
         u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
+        if (pressed & KEY_PLUS)
+        {
+            NDS::DeInit();
+
+            MainMenu();
+            if (ROMPath == "")
+                break;
+
+            paused = false;
+            StartCore();
+        }
         if (pressed & KEY_L || pressed & KEY_R)
         {
             Savestate* state = new Savestate(const_cast<char*>(StatePath.c_str()), pressed & KEY_L);
@@ -787,6 +809,9 @@ int main(int argc, char **argv)
     }
     romfsExit();
 
+    EmuDirectory = (char*)"sdmc:/switch/melonds";
+    Config::Load();
+
     MainMenu();
     if (ROMPath == "")
     {
@@ -794,12 +819,6 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    EmuDirectory = (char*)"sdmc:/switch/melonds";
-    SRAMPath = ROMPath.substr(0, ROMPath.rfind(".")) + ".sav";
-    StatePath = ROMPath.substr(0, ROMPath.rfind(".")) + ".mln";
-    StateSRAMPath = StatePath + ".sav";
-
-    Config::Load();
     if (!LocalFileExists("bios7.bin") || !LocalFileExists("bios9.bin") || !LocalFileExists("firmware.bin"))
     {
         glClear(GL_COLOR_BUFFER_BIT);
@@ -826,23 +845,6 @@ int main(int argc, char **argv)
         }
     }
 
-    appletLockExit();
-
-    pcvInitialize();
-    if (Config::SwitchOverclock == 0)
-        pcvSetClockRate(PcvModule_Cpu, 1020000000);
-    else if (Config::SwitchOverclock == 1)
-        pcvSetClockRate(PcvModule_Cpu, 1224000000);
-    else if (Config::SwitchOverclock == 2)
-        pcvSetClockRate(PcvModule_Cpu, 1581000000);
-    else
-        pcvSetClockRate(PcvModule_Cpu, 1785000000);
-
-    NDS::Init();
-    NDS::LoadROM(ROMPath.c_str(), SRAMPath.c_str(), Config::DirectBoot);
-
-    SetScreenLayout();
-
     audoutInitialize();
     audoutStartAudioOut();
 
@@ -853,10 +855,9 @@ int main(int argc, char **argv)
     AudioBuffer.data_size = 1440 * 2 * 2;
     AudioBuffer.data_offset = 0;
 
-    threadCreate(&core, RunCore, NULL, 0x80000, 0x30, 1);
-    threadStart(&core);
-    threadCreate(&audio, PlayAudio, NULL, 0x80000, 0x30, 0);
-    threadStart(&audio);
+    pcvInitialize();
+
+    StartCore();
 
     Framebuffer = new u32[256 * 384];
 
@@ -869,7 +870,11 @@ int main(int argc, char **argv)
         u32 released = hidKeysUp(CONTROLLER_P1_AUTO);
 
         if (pressed & KEY_L || pressed & KEY_R)
+        {
             PauseMenu();
+            if (ROMPath == "")
+                break;
+        }
 
         for (int i = 0; i < 12; i++)
         {
@@ -925,10 +930,10 @@ int main(int argc, char **argv)
         eglSwapBuffers(Display, Surface);
     }
 
-    audoutExit();
-    DeInitRenderer();
     pcvSetClockRate(PcvModule_Cpu, 1020000000);
     pcvExit();
+    audoutExit();
+    DeInitRenderer();
     appletUnlockExit();
     return 0;
 }

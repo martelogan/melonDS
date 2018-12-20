@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <switch.h>
+#include <unistd.h>
 #include <vector>
 
 #include <EGL/egl.h>
@@ -656,9 +657,13 @@ void RunCore(void *args)
     while (!paused)
     {
         chrono::steady_clock::time_point start = chrono::steady_clock::now();
+
         NDS::RunFrame();
         memcpy(Framebuffer, GPU::Framebuffer, 256 * 384 * 4);
-        while (chrono::duration_cast<chrono::duration<double>>(chrono::steady_clock::now() - start).count() < (float)1 / 60);
+
+        chrono::duration<double> elapsed = chrono::steady_clock::now() - start;
+        if (elapsed.count() < (float)1 / 60)
+            usleep(((float)1 / 60 - elapsed.count()) * 1000000);
     }
 }
 

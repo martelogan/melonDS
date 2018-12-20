@@ -67,7 +67,9 @@ extern int SavestateRelocSRAM;
 
 extern int AudioVolume;
 extern int MicInputType;
+#ifndef __SWITCH__
 extern char MicWavPath[512];
+#endif
 
 extern char LastROMFolder[512];
 

@@ -62,7 +62,9 @@ int SavestateRelocSRAM;
 
 int AudioVolume;
 int MicInputType;
+#ifndef __SWITCH__0
 char MicWavPath[512];
+#endif
 
 char LastROMFolder[512];
 
@@ -140,7 +142,9 @@ ConfigEntry ConfigFile[] =
 
     {"AudioVolume", 0, &AudioVolume, 256, NULL, 0},
     {"MicInputType", 0, &MicInputType, 1, NULL, 0},
+#ifndef __SWITCH__
     {"MicWavPath", 1, MicWavPath, 0, "", 511},
+#endif
 
     {"LastROMFolder", 1, LastROMFolder, 0, "", 511},
 

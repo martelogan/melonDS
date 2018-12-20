@@ -208,61 +208,75 @@ unsigned char *TexFromBMP(string filename)
     return data;
 }
 
-void DrawChar(char c, float x, float y, int size, bool color)
+void DrawString(string str, float x, float y, int size, bool color)
 {
-    int col = c - 32;
-    int row = 9;
-    while (col > 9)
+    const char *s = str.c_str();
+
+    int width = 0;
+    for (unsigned int i = 0; i < strlen(s); i++)
+        width += charWidth[s[i] - 32];
+
+    // Texture dimensions must be divisible by 4
+    int extra = 0;
+    while (width % 4 != 0)
     {
-        col -= 10;
-        row--;
+        width++;
+        extra++;
     }
 
-    unsigned char *tex = new unsigned char[48 * 48 * 3];
-    if (color)
+    unsigned char *tex = new unsigned char[width * 48 * 3];
+    int currentx = 0;
+
+    for (unsigned int i = 0; i < strlen(s); i++)
     {
-        for (int i = 0; i < 48; i++)
-            memcpy(&tex[i * 48 * 3], &FontColor[((row * 512 + col) * 48 + (i + 32) * 512) * 3], 48 * 3);
-    }
-    else
-    {
-        for (int i = 0; i < 48; i++)
-            memcpy(&tex[i * 48 * 3], &Font[((row * 512 + col) * 48 + (i + 32) * 512) * 3], 48 * 3);
+        int col = s[i] - 32;
+        int row = 9;
+        while (col > 9)
+        {
+            col -= 10;
+            row--;
+        }
+
+        int cwidth = charWidth[s[i] - 32];
+        if (i == strlen(s) - 1)
+            cwidth += extra;
+
+        if (color)
+        {
+            for (int j = 0; j < 48; j++)
+                memcpy(&tex[(j * width + currentx) * 3], &FontColor[((row * 512 + col) * 48 + (j + 32) * 512) * 3], cwidth * 3);
+        }
+        else
+        {
+            for (int j = 0; j < 48; j++)
+                memcpy(&tex[(j * width + currentx) * 3], &Font[((row * 512 + col) * 48 + (j + 32) * 512) * 3], cwidth * 3);
+        }
+
+        currentx += cwidth;
     }
 
-    Vertex character[] =
+    Vertex string[] =
     {
-        { { x + size, y        }, { 1.0f, 1.0f } },
-        { { x,        y        }, { 0.0f, 1.0f } },
-        { { x,        y + size }, { 0.0f, 0.0f } },
-        { { x + size, y + size }, { 1.0f, 0.0f } }
+        { { x + (float)width * size / 48, y        }, { 1.0f, 1.0f } },
+        { { x,                            y        }, { 0.0f, 1.0f } },
+        { { x,                            y + size }, { 0.0f, 0.0f } },
+        { { x + (float)width * size / 48, y + size }, { 1.0f, 0.0f } }
     };
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(character), character, GL_DYNAMIC_DRAW);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 48, 48, 0, GL_BGR, GL_UNSIGNED_BYTE, tex);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(string), string, GL_DYNAMIC_DRAW);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, 48, 0, GL_BGR, GL_UNSIGNED_BYTE, tex);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
     delete[] tex;
 }
 
-void DrawString(string str, float x, float y, int size, bool color)
-{
-    const char *s = str.c_str();
-    int currentx = x;
-    for (unsigned int i = 0; i < strlen(s); i++)
-    {
-        DrawChar(s[i], currentx, y, size, color);
-        currentx += (float)charWidth[s[i] - 32] * size / 48;
-    }
-}
-
 void DrawStringFromRight(string str, int x, int y, int size, bool color)
 {
     const char *s = str.c_str();
-    int length = 0;
+    int width = 0;
     for (unsigned int i = 0; i < strlen(s); i++)
-        length += (float)charWidth[s[i] - 32] * size / 48;
-    DrawString(str, x - length, y, size, color);
+        width += (float)charWidth[s[i] - 32] * size / 48;
+    DrawString(str, x - width, y, size, color);
 }
 
 void DrawLine(float x1, float y1, float x2, float y2, bool color)
@@ -384,10 +398,10 @@ void FilesMenu()
     else
         glClearColor((float)45 / 255, (float)45 / 255, (float)45 / 255, 1.0f);
 
-    if (strcmp(Config::LastROMFolder, ""))
-        ROMPath = Config::LastROMFolder;
-    else
+    if (strcmp(Config::LastROMFolder, "") == 0)
         ROMPath = "sdmc:/";
+    else
+        ROMPath = Config::LastROMFolder;
 
     while (ROMPath.find(".nds", (ROMPath.length() - 4)) == string::npos)
     {

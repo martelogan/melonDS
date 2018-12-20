@@ -55,8 +55,8 @@ AudioOutBuffer AudioBuffer, *ReleasedBuffer;
 u32 *Framebuffer;
 unsigned int TouchBoundLeft, TouchBoundRight, TouchBoundTop, TouchBoundBottom;
 
-Thread core, audio;
-bool paused;
+Thread Core, Audio;
+bool Paused, LidClosed;
 
 EGLDisplay Display;
 EGLContext Context;
@@ -73,6 +73,7 @@ int *OptionValues[] =
     &Config::ScreenLayout,
     &Config::ScreenSizing,
     &Config::ScreenFilter,
+    &Config::LimitFPS,
     &Config::SwitchOverclock
 };
 
@@ -305,6 +306,7 @@ void OptionsMenu()
         "Screen layout",
         "Screen sizing",
         "Screen filtering",
+        "Limit framerate",
         "Switch overclock"
     };
 
@@ -317,6 +319,7 @@ void OptionsMenu()
         { "0 pixels", "1 pixel", "8 pixels", "64 pixels", "90 pixels", "128 pixels" },
         { "Natural", "Vertical", "Horizontal" },
         { "Even", "Emphasize top", "Emphasize bottom" },
+        { "Off", "On" },
         { "Off", "On" },
         { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" }
     };
@@ -381,7 +384,10 @@ void FilesMenu()
     else
         glClearColor((float)45 / 255, (float)45 / 255, (float)45 / 255, 1.0f);
 
-    ROMPath = "sdmc:/";
+    if (strcmp(Config::LastROMFolder, ""))
+        ROMPath = Config::LastROMFolder;
+    else
+        ROMPath = "sdmc:/";
 
     while (ROMPath.find(".nds", (ROMPath.length() - 4)) == string::npos)
     {
@@ -460,6 +466,10 @@ void FilesMenu()
             eglSwapBuffers(Display, Surface);
         }
     }
+
+    string folder = ROMPath.substr(0, ROMPath.rfind("/")).c_str();
+    folder.append(1, '\0');
+    strncpy(Config::LastROMFolder, folder.c_str(), folder.length());
 }
 
 bool LocalFileExists(const char *name)
@@ -654,7 +664,7 @@ void SetScreenLayout()
 
 void RunCore(void *args)
 {
-    while (!paused)
+    while (!Paused)
     {
         chrono::steady_clock::time_point start = chrono::steady_clock::now();
 
@@ -662,7 +672,7 @@ void RunCore(void *args)
         memcpy(Framebuffer, GPU::Framebuffer, 256 * 384 * 4);
 
         chrono::duration<double> elapsed = chrono::steady_clock::now() - start;
-        if (elapsed.count() < (float)1 / 60)
+        if (Config::LimitFPS && elapsed.count() < (float)1 / 60)
             usleep(((float)1 / 60 - elapsed.count()) * 1000000);
     }
 }
@@ -711,7 +721,7 @@ void FillAudioBuffer()
 
 void PlayAudio(void *args)
 {
-    while (!paused)
+    while (!Paused)
     {
         FillAudioBuffer();
         audoutPlayBuffer(&AudioBuffer, &ReleasedBuffer);
@@ -737,17 +747,17 @@ void StartCore(bool resume)
 
     SetScreenLayout();
 
-    paused = false;
+    Paused = false;
 
-    threadCreate(&core, RunCore, NULL, 0x80000, 0x30, 1);
-    threadStart(&core);
-    threadCreate(&audio, PlayAudio, NULL, 0x80000, 0x30, 0);
-    threadStart(&audio);
+    threadCreate(&Core, RunCore, NULL, 0x80000, 0x30, 1);
+    threadStart(&Core);
+    threadCreate(&Audio, PlayAudio, NULL, 0x80000, 0x30, 0);
+    threadStart(&Audio);
 }
 
 void PauseMenu()
 {
-    paused = true;
+    Paused = true;
     appletUnlockExit();
 
     if (MenuTheme == ColorSetId_Light)
@@ -761,13 +771,16 @@ void PauseMenu()
     vector<const char*> items = 
     {
         "Resume",
+        "Close lid",
         "Save state",
         "Load state",
         "Options",
         "File browser"
     };
+    if (LidClosed)
+        items[1] = "Open lid";
 
-    while (paused)
+    while (Paused)
     {
         unsigned int selection = 0;
 
@@ -800,7 +813,13 @@ void PauseMenu()
         {
             StartCore(true);
         }
-        else if (selection == 1 || selection == 2)
+        else if (selection == 1)
+        {
+            LidClosed = !LidClosed;
+            NDS::SetLidClosed(LidClosed);
+            StartCore(true);
+        }
+        else if (selection == 2 || selection == 3)
         {
             Savestate* state = new Savestate(const_cast<char*>(StatePath.c_str()), selection == 1);
             if (!state->Error)
@@ -813,11 +832,11 @@ void PauseMenu()
 
             StartCore(true);
         }
-        else if (selection == 3)
+        else if (selection == 4)
         {
             OptionsMenu();
         }
-        else if (selection == 4)
+        else if (selection == 5)
         {
             NDS::DeInit();
 

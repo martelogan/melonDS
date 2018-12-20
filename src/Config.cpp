@@ -35,6 +35,9 @@ const char* kConfigFile = "melonDS.ini";
 int KeyMapping[12];
 int JoyMapping[12];
 
+int HKKeyMapping[HK_MAX];
+int HKJoyMapping[HK_MAX];
+
 int WindowWidth;
 int WindowHeight;
 #endif
@@ -45,6 +48,8 @@ int ScreenLayout;
 int ScreenSizing;
 int ScreenFilter;
 
+int LimitFPS;
+
 int DirectBoot;
 
 int Threaded3D;
@@ -54,6 +59,12 @@ int SocketBindAnyAddr;
 #endif
 
 int SavestateRelocSRAM;
+
+int AudioVolume;
+int MicInputType;
+char MicWavPath[512];
+
+char LastROMFolder[512];
 
 #ifdef __SWITCH__
 int SwitchOverclock;
@@ -66,7 +77,7 @@ typedef struct
     void* Value;
     int DefaultInt;
     char* DefaultStr;
-    int StrLength;
+    int StrLength; // should be set to actual array length minus one
 
 } ConfigEntry;
 
@@ -99,6 +110,12 @@ ConfigEntry ConfigFile[] =
     {"Joy_X",      0, &JoyMapping[10], -1, NULL, 0},
     {"Joy_Y",      0, &JoyMapping[11], -1, NULL, 0},
 
+    {"HKKey_Lid",  0, &HKKeyMapping[HK_Lid], 0x0E, NULL, 0},
+    {"HKKey_Mic",  0, &HKKeyMapping[HK_Mic], 0x35, NULL, 0},
+
+    {"HKJoy_Lid",  0, &HKJoyMapping[HK_Lid], -1, NULL, 0},
+    {"HKJoy_Mic",  0, &HKJoyMapping[HK_Mic], -1, NULL, 0},
+
     {"WindowWidth",  0, &WindowWidth,  256, NULL, 0},
     {"WindowHeight", 0, &WindowHeight, 384, NULL, 0},
 #endif
@@ -109,6 +126,8 @@ ConfigEntry ConfigFile[] =
     {"ScreenSizing",   0, &ScreenSizing,   0, NULL, 0},
     {"ScreenFilter",   0, &ScreenFilter,   1, NULL, 0},
 
+    {"LimitFPS", 0, &LimitFPS, 1, NULL, 0},
+
     {"DirectBoot", 0, &DirectBoot, 1, NULL, 0},
 
     {"Threaded3D", 0, &Threaded3D, 1, NULL, 0},
@@ -118,6 +137,12 @@ ConfigEntry ConfigFile[] =
 #endif
 
     {"SavStaRelocSRAM", 0, &SavestateRelocSRAM, 1, NULL, 0},
+
+    {"AudioVolume", 0, &AudioVolume, 256, NULL, 0},
+    {"MicInputType", 0, &MicInputType, 1, NULL, 0},
+    {"MicWavPath", 1, MicWavPath, 0, "", 511},
+
+    {"LastROMFolder", 1, LastROMFolder, 0, "", 511},
 
 #ifdef __SWITCH__
     {"SwitchOverclock", 0, &SwitchOverclock, 0, NULL, 0},
@@ -137,7 +162,10 @@ void Load()
         if (entry->Type == 0)
             *(int*)entry->Value = entry->DefaultInt;
         else
+        {
             strncpy((char*)entry->Value, entry->DefaultStr, entry->StrLength);
+            ((char*)entry->Value)[entry->StrLength] = '\0';
+        }
 
         entry++;
     }

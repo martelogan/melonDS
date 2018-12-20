@@ -71,6 +71,11 @@ u8 ARM7MemTimings[0x20000][4];
 ARMv5* ARM9;
 ARMv4* ARM7;
 
+u32 NumFrames;
+u64 SysClockCycles;
+u64 LastSysClockCycles;
+u32 FrameSysClockCycles;
+
 s32 CurIterationCycles;
 s32 ARM7Offset;
 int CurCPU;
@@ -386,6 +391,9 @@ void Reset()
         dbg_CyclesARM7 = 0;
         dbg_CyclesTimer7 = 0;
 #endif // DEBUG_CHECK_DESYNC
+
+    SysClockCycles = 0;
+    LastSysClockCycles = 0;
 
     f = melon_fopen_local("bios9.bin", "rb");
     if (!f)
@@ -753,7 +761,10 @@ void RunSystem(s32 cycles)
 
 u32 RunFrame()
 {
+    FrameSysClockCycles = 0;
+
     if (!Running) return 263; // dorp
+    if (CPUStop & 0x40000000) return 263;
 
     GPU::StartFrame();
 
@@ -838,6 +849,18 @@ u32 RunFrame()
 
         RunLooseTimers(1, ndscyclestorun);
         RunSystem(ndscyclestorun);
+
+        SysClockCycles += ndscyclestorun;
+        LastSysClockCycles += ndscyclestorun;
+        FrameSysClockCycles += ndscyclestorun;
+
+        if (CPUStop & 0x40000000)
+        {
+            // checkme: when is sleep mode effective?
+            //CancelEvent(Event_LCD);
+            //GPU::TotalScanlines = 263;
+            break;
+        }
     }
 
 #ifdef DEBUG_CHECK_DESYNC
@@ -848,6 +871,8 @@ u32 RunFrame()
            dbg_CyclesARM7-dbg_CyclesSys,
            dbg_CyclesTimer7-dbg_CyclesSys);
 #endif
+
+    NumFrames++;
 
     return GPU::TotalScanlines;
 }
@@ -935,6 +960,25 @@ void SetKeyMask(u32 mask)
 
     KeyInput &= 0xFFFCFC00;
     KeyInput |= key_lo | (key_hi << 16);
+}
+
+void SetLidClosed(bool closed)
+{
+    if (closed)
+    {
+        KeyInput |= (1<<23);
+    }
+    else
+    {
+        KeyInput &= ~(1<<23);
+        SetIRQ(1, IRQ_LidOpen);
+        CPUStop &= ~0x40000000;
+    }
+}
+
+void MicInputFrame(s16* data, int samples)
+{
+    return SPI_TSC::MicInputFrame(data, samples);
 }
 
 
@@ -1090,9 +1134,133 @@ void GXFIFOUnstall()
     CPUStop &= ~0x80000000;
 }
 
+void EnterSleepMode()
+{
+    if (CPUStop & 0x40000000) return;
+
+    CPUStop |= 0x40000000;
+    ARM7->Halt(2);
+}
+
 u32 GetPC(u32 cpu)
 {
     return cpu ? ARM7->R[15] : ARM9->R[15];
+}
+
+u64 GetSysClockCycles(int num)
+{
+    u64 ret;
+
+    if (num == 0 || num == 2)
+    {
+        if      (num == 0) ret = SysClockCycles;
+        else if (num == 2) ret = FrameSysClockCycles;
+
+        if      (CurCPU == 1) ret += (ARM9->Cycles >> 1);
+        else if (CurCPU == 2) ret += ARM7->Cycles;
+    }
+    else if (num == 1)
+    {
+        ret = LastSysClockCycles;
+        LastSysClockCycles = 0;
+
+        if (CurCPU == 1)
+        {
+            ret += (ARM9->Cycles >> 1);
+            LastSysClockCycles = -(ARM9->Cycles >> 1);
+        }
+        else if (CurCPU == 2)
+        {
+            ret += ARM7->Cycles;
+            LastSysClockCycles = -ARM7->Cycles;
+        }
+    }
+
+    return ret;
+}
+
+void NocashPrint(u32 ncpu, u32 addr)
+{
+    // addr: u16 flags (TODO: research? libnds doesn't use those)
+    // addr+2: debug string
+
+    addr += 2;
+
+    ARM* cpu = ncpu ? (ARM*)ARM7 : (ARM*)ARM9;
+    u8 (*readfn)(u32) = ncpu ? NDS::ARM7Read8 : NDS::ARM9Read8;
+
+    char output[1024];
+    int ptr = 0;
+
+    for (int i = 0; i < 120 && ptr < 1023; )
+    {
+        char ch = readfn(addr++);
+        i++;
+
+        if (ch == '%')
+        {
+            char cmd[16]; int j;
+            for (j = 0; j < 15; )
+            {
+                char ch2 = readfn(addr++);
+                i++;
+                if (i >= 120) break;
+                if (ch2 == '%') break;
+                cmd[j++] = ch2;
+            }
+            cmd[j] = '\0';
+
+            char subs[64];
+
+            if (cmd[0] == 'r')
+            {
+                if      (!strcmp(cmd, "r0")) sprintf(subs, "%08X", cpu->R[0]);
+                else if (!strcmp(cmd, "r1")) sprintf(subs, "%08X", cpu->R[1]);
+                else if (!strcmp(cmd, "r2")) sprintf(subs, "%08X", cpu->R[2]);
+                else if (!strcmp(cmd, "r3")) sprintf(subs, "%08X", cpu->R[3]);
+                else if (!strcmp(cmd, "r4")) sprintf(subs, "%08X", cpu->R[4]);
+                else if (!strcmp(cmd, "r5")) sprintf(subs, "%08X", cpu->R[5]);
+                else if (!strcmp(cmd, "r6")) sprintf(subs, "%08X", cpu->R[6]);
+                else if (!strcmp(cmd, "r7")) sprintf(subs, "%08X", cpu->R[7]);
+                else if (!strcmp(cmd, "r8")) sprintf(subs, "%08X", cpu->R[8]);
+                else if (!strcmp(cmd, "r9")) sprintf(subs, "%08X", cpu->R[9]);
+                else if (!strcmp(cmd, "r10")) sprintf(subs, "%08X", cpu->R[10]);
+                else if (!strcmp(cmd, "r11")) sprintf(subs, "%08X", cpu->R[11]);
+                else if (!strcmp(cmd, "r12")) sprintf(subs, "%08X", cpu->R[12]);
+                else if (!strcmp(cmd, "r13")) sprintf(subs, "%08X", cpu->R[13]);
+                else if (!strcmp(cmd, "r14")) sprintf(subs, "%08X", cpu->R[14]);
+                else if (!strcmp(cmd, "r15")) sprintf(subs, "%08X", cpu->R[15]);
+            }
+            else
+            {
+                if      (!strcmp(cmd, "sp")) sprintf(subs, "%08X", cpu->R[13]);
+                else if (!strcmp(cmd, "lr")) sprintf(subs, "%08X", cpu->R[14]);
+                else if (!strcmp(cmd, "pc")) sprintf(subs, "%08X", cpu->R[15]);
+                else if (!strcmp(cmd, "frame")) sprintf(subs, "%u", NumFrames);
+                else if (!strcmp(cmd, "scanline")) sprintf(subs, "%u", GPU::VCount);
+                else if (!strcmp(cmd, "totalclks")) sprintf(subs, "%lu", GetSysClockCycles(0));
+                else if (!strcmp(cmd, "lastclks")) sprintf(subs, "%lu", GetSysClockCycles(1));
+                else if (!strcmp(cmd, "zeroclks"))
+                {
+                    sprintf(subs, "");
+                    GetSysClockCycles(1);
+                }
+            }
+
+            int slen = strlen(subs);
+            if ((ptr+slen) > 1023) slen = 1023-ptr;
+            strncpy(&output[ptr], subs, slen);
+            ptr += slen;
+        }
+        else
+        {
+            output[ptr++] = ch;
+            if (ch == '\0') break;
+        }
+    }
+
+    output[ptr] = '\0';
+    printf("%s", output);
 }
 
 
@@ -1408,7 +1576,7 @@ void debug(u32 param)
     //    printf("VRAM %c: %02X\n", 'A'+i, GPU::VRAMCNT[i]);
 
     /*FILE*
-    shit = fopen("debug/dldio.bin", "wb");
+    shit = fopen("debug/jam.bin", "wb");
     for (u32 i = 0x02000000; i < 0x02400000; i+=4)
     {
         u32 val = ARM7Read32(i);
@@ -1472,6 +1640,11 @@ u8 ARM9Read8(u32 addr)
         //printf("GBA read8 %08X\n", addr);
         // TODO!!!
         return 0xFF;
+
+    case 0x0A000000:
+        if (ExMemCnt[0] & (1<<7)) return 0xFF; // TODO: proper open bus
+        // TODO!!!
+        return 0xFF;
     }
 
     printf("unknown arm9 read8 %08X\n", addr);
@@ -1522,8 +1695,13 @@ u16 ARM9Read16(u32 addr)
     case 0x08000000:
     case 0x09000000:
         if (ExMemCnt[0] & (1<<7)) return 0xFFFF; // TODO: proper open bus
-        //return *(u16*)&NDSCart::CartROM[addr & (NDSCart::CartROMSize-1)];
-        //printf("GBA read16 %08X\n", addr);
+        //return *(u8*)&NDSCart::CartROM[addr & (NDSCart::CartROMSize-1)];
+        //printf("GBA read8 %08X\n", addr);
+        // TODO!!!
+        return 0xFFFF;
+
+    case 0x0A000000:
+        if (ExMemCnt[0] & (1<<7)) return 0xFFFF; // TODO: proper open bus
         // TODO!!!
         return 0xFFFF;
     }
@@ -1576,8 +1754,13 @@ u32 ARM9Read32(u32 addr)
     case 0x08000000:
     case 0x09000000:
         if (ExMemCnt[0] & (1<<7)) return 0xFFFFFFFF; // TODO: proper open bus
-        //return *(u32*)&NDSCart::CartROM[addr & (NDSCart::CartROMSize-1)];
-        //printf("GBA read32 %08X\n", addr);
+        //return *(u8*)&NDSCart::CartROM[addr & (NDSCart::CartROMSize-1)];
+        //printf("GBA read8 %08X\n", addr);
+        // TODO!!!
+        return 0xFFFFFFFF;
+
+    case 0x0A000000:
+        if (ExMemCnt[0] & (1<<7)) return 0xFFFFFFFF; // TODO: proper open bus
         // TODO!!!
         return 0xFFFFFFFF;
     }
@@ -1766,6 +1949,19 @@ u8 ARM7Read8(u32 addr)
     case 0x06000000:
     case 0x06800000:
         return GPU::ReadVRAM_ARM7<u8>(addr);
+
+    case 0x08000000:
+    case 0x09000000:
+        if (!(ExMemCnt[0] & (1<<7))) return 0xFF; // TODO: proper open bus
+        //return *(u8*)&NDSCart::CartROM[addr & (NDSCart::CartROMSize-1)];
+        //printf("GBA read8 %08X\n", addr);
+        // TODO!!!
+        return 0xFF;
+
+    case 0x0A000000:
+        if (!(ExMemCnt[0] & (1<<7))) return 0xFF; // TODO: proper open bus
+        // TODO!!!
+        return 0xFF;
     }
 
     printf("unknown arm7 read8 %08X %08X %08X/%08X\n", addr, ARM7->R[15], ARM7->R[0], ARM7->R[1]);
@@ -1816,6 +2012,19 @@ u16 ARM7Read16(u32 addr)
     case 0x06000000:
     case 0x06800000:
         return GPU::ReadVRAM_ARM7<u16>(addr);
+
+    case 0x08000000:
+    case 0x09000000:
+        if (!(ExMemCnt[0] & (1<<7))) return 0xFFFF; // TODO: proper open bus
+        //return *(u8*)&NDSCart::CartROM[addr & (NDSCart::CartROMSize-1)];
+        //printf("GBA read8 %08X\n", addr);
+        // TODO!!!
+        return 0xFFFF;
+
+    case 0x0A000000:
+        if (!(ExMemCnt[0] & (1<<7))) return 0xFFFF; // TODO: proper open bus
+        // TODO!!!
+        return 0xFFFF;
     }
 
     printf("unknown arm7 read16 %08X %08X\n", addr, ARM7->R[15]);
@@ -1866,6 +2075,19 @@ u32 ARM7Read32(u32 addr)
     case 0x06000000:
     case 0x06800000:
         return GPU::ReadVRAM_ARM7<u32>(addr);
+
+    case 0x08000000:
+    case 0x09000000:
+        if (!(ExMemCnt[0] & (1<<7))) return 0xFFFFFFFF; // TODO: proper open bus
+        //return *(u8*)&NDSCart::CartROM[addr & (NDSCart::CartROMSize-1)];
+        //printf("GBA read8 %08X\n", addr);
+        // TODO!!!
+        return 0xFFFFFFFF;
+
+    case 0x0A000000:
+        if (!(ExMemCnt[0] & (1<<7))) return 0xFFFFFFFF; // TODO: proper open bus
+        // TODO!!!
+        return 0xFFFFFFFF;
     }
 
     printf("unknown arm7 read32 %08X | %08X\n", addr, ARM7->R[15]);
@@ -2323,6 +2545,9 @@ u32 ARM9IORead32(u32 addr)
     case 0x040002B4: return SqrtRes;
     case 0x040002B8: return SqrtVal[0];
     case 0x040002BC: return SqrtVal[1];
+
+    case 0x04000300: return PostFlag9;
+    case 0x04000304: return PowerControl9;
 
     case 0x04100000:
         if (IPCFIFOCnt9 & 0x8000)
@@ -3030,7 +3255,10 @@ void ARM7IOWrite8(u32 addr, u8 val)
         return;
 
     case 0x04000301:
-        if (val == 0x80) ARM7->Halt(1);
+        val & 0xC0;
+        if      (val == 0x40) printf("!! GBA MODE NOT SUPPORTED\n");
+        else if (val == 0x80) ARM7->Halt(1);
+        else if (val == 0xC0) EnterSleepMode();
         return;
     }
 

@@ -16,15 +16,14 @@
     with melonDS. If not, see http://www.gnu.org/licenses/.
 */
 
-#ifndef DLGINPUTCONFIG_H
-#define DLGINPUTCONFIG_H
+#ifndef DLGAUDIOSETTINGS_H
+#define DLGAUDIOSETTINGS_H
 
-namespace DlgInputConfig
+namespace DlgAudioSettings
 {
 
-void Open(int type);
+void Open();
 
 }
 
-#endif // DLGINPUTCONFIG_H
-
+#endif // DLGAUDIOSETTINGS_H

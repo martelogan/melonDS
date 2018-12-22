@@ -40,7 +40,7 @@ ROMFS		:=	romfs
 
 APP_TITLE   := melonDS
 APP_AUTHOR  := Hydr8gon, StapleButter
-APP_VERSION := 0.7.1
+APP_VERSION := 0.7.2
 ICON        := icon/melon.jpg
 
 #---------------------------------------------------------------------------------

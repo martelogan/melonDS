@@ -31,7 +31,6 @@ namespace Config
 
 const char* kConfigFile = "melonDS.ini";
 
-#ifndef __SWITCH__
 int KeyMapping[12];
 int JoyMapping[12];
 
@@ -40,7 +39,6 @@ int HKJoyMapping[HK_MAX];
 
 int WindowWidth;
 int WindowHeight;
-#endif
 
 int ScreenRotation;
 int ScreenGap;
@@ -54,23 +52,17 @@ int DirectBoot;
 
 int Threaded3D;
 
-#ifndef __SWITCH__
 int SocketBindAnyAddr;
-#endif
 
 int SavestateRelocSRAM;
 
 int AudioVolume;
 int MicInputType;
-#ifndef __SWITCH__0
 char MicWavPath[512];
-#endif
 
 char LastROMFolder[512];
 
-#ifdef __SWITCH__
 int SwitchOverclock;
-#endif
 
 typedef struct
 {

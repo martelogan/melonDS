@@ -36,7 +36,6 @@ bool HasConfigFile(const char* fileName);
 void Load();
 void Save();
 
-#ifndef __SWITCH__
 extern int KeyMapping[12];
 extern int JoyMapping[12];
 
@@ -45,7 +44,6 @@ extern int HKJoyMapping[HK_MAX];
 
 extern int WindowWidth;
 extern int WindowHeight;
-#endif
 
 extern int ScreenRotation;
 extern int ScreenGap;
@@ -59,23 +57,17 @@ extern int DirectBoot;
 
 extern int Threaded3D;
 
-#ifndef __SWITCH__
 extern int SocketBindAnyAddr;
-#endif
 
 extern int SavestateRelocSRAM;
 
 extern int AudioVolume;
 extern int MicInputType;
-#ifndef __SWITCH__
 extern char MicWavPath[512];
-#endif
 
 extern char LastROMFolder[512];
 
-#ifdef __SWITCH__
 extern int SwitchOverclock;
-#endif
 
 }
 

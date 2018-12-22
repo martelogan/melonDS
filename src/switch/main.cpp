@@ -49,11 +49,9 @@ unsigned char *Font, *FontColor;
 char *EmuDirectory;
 string ROMPath, SRAMPath, StatePath, StateSRAMPath;
 
-u8 *OutBufferData;
-AudioOutBuffer AudOutBuffer, *ReleasedOutBuffer;
-
-u8 *InBufferData;
-AudioInBuffer AudInBuffer, *ReleasedInBuffer;
+u8 *AudOutBufferData, *AudInBufferData;
+AudioOutBuffer AudOutBuffer, *RelOutBuffer;
+AudioInBuffer AudInBuffer, *RelInBuffer;
 
 u32 *Framebuffer;
 unsigned int TouchBoundLeft, TouchBoundRight, TouchBoundTop, TouchBoundBottom;
@@ -65,6 +63,40 @@ EGLDisplay Display;
 EGLContext Context;
 EGLSurface Surface;
 GLuint Program, VertArrayObj, VertBufferObj, Texture;
+
+const int ClockSpeeds[] = { 1020000000, 1224000000, 1581000000, 1785000000 };
+
+vector<const char*> options =
+{
+    "Boot game directly",
+    "Threaded 3D renderer",
+    "Audio volume",
+    "Microphone input",
+    "Separate savefiles from savestates",
+    "Screen rotation",
+    "Mid-screen gap",
+    "Screen layout",
+    "Screen sizing",
+    "Screen filtering",
+    "Limit framerate",
+    "Switch overclock"
+};
+
+vector<vector<const char*>> possiblevalues =
+{
+    { "Off", "On" },
+    { "Off", "On" },
+    { "0%", "25%", "50%", "75%", "100%" },
+    { "None", "Microphone", "White noise" },
+    { "Off", "On" },
+    { "0", "90", "180", "270" },
+    { "0 pixels", "1 pixel", "8 pixels", "64 pixels", "90 pixels", "128 pixels" },
+    { "Natural", "Vertical", "Horizontal" },
+    { "Even", "Emphasize top", "Emphasize bottom" },
+    { "Off", "On" },
+    { "Off", "On" },
+    { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" }
+};
 
 int *OptionValues[] =
 {
@@ -82,7 +114,7 @@ int *OptionValues[] =
     &Config::SwitchOverclock
 };
 
-const int charWidth[] =
+const int CharWidth[] =
 {
     11, 10, 11, 20, 19, 28, 25,  7, 12, 12,
     15, 25,  9, 11,  9, 17, 21, 21, 21, 21,
@@ -133,14 +165,13 @@ void InitRenderer()
 {
     EGLConfig config;
     EGLint numconfigs;
-    EGLint attributelist[] = { EGL_NONE };
 
     Display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     eglInitialize(Display, NULL, NULL);
     eglBindAPI(EGL_OPENGL_API);
-    eglChooseConfig(Display, attributelist, &config, 1, &numconfigs);
+    eglChooseConfig(Display, {}, &config, 1, &numconfigs);
     Surface = eglCreateWindowSurface(Display, config, (char*)"", NULL);
-    Context = eglCreateContext(Display, config, EGL_NO_CONTEXT, attributelist);
+    Context = eglCreateContext(Display, config, EGL_NO_CONTEXT, {});
     eglMakeCurrent(Display, Surface, Surface, Context);
 
     gladLoadGL();
@@ -215,11 +246,9 @@ unsigned char *TexFromBMP(string filename)
 
 void DrawString(string str, float x, float y, int size, bool color, bool fromright)
 {
-    const char *s = str.c_str();
-
     int width = 0;
-    for (unsigned int i = 0; i < strlen(s); i++)
-        width += charWidth[s[i] - 32];
+    for (unsigned int i = 0; i < str.size(); i++)
+        width += CharWidth[str[i] - 32];
 
     // Texture dimensions must be divisible by 4
     int extra = 0;
@@ -229,12 +258,18 @@ void DrawString(string str, float x, float y, int size, bool color, bool fromrig
         extra++;
     }
 
+    unsigned char *font;
+    if (color)
+        font = FontColor;
+    else
+        font = Font;
+
     unsigned char *tex = new unsigned char[width * 48 * 3];
     int currentx = 0;
 
-    for (unsigned int i = 0; i < strlen(s); i++)
+    for (unsigned int i = 0; i < str.size(); i++)
     {
-        int col = s[i] - 32;
+        int col = str[i] - 32;
         int row = 9;
         while (col > 9)
         {
@@ -242,33 +277,25 @@ void DrawString(string str, float x, float y, int size, bool color, bool fromrig
             row--;
         }
 
-        int cwidth = charWidth[s[i] - 32];
-        if (i == strlen(s) - 1)
+        int cwidth = CharWidth[str[i] - 32];
+        if (i == str.size() - 1)
             cwidth += extra;
 
-        if (color)
-        {
-            for (int j = 0; j < 48; j++)
-                memcpy(&tex[(j * width + currentx) * 3], &FontColor[((row * 512 + col) * 48 + (j + 32) * 512) * 3], cwidth * 3);
-        }
-        else
-        {
-            for (int j = 0; j < 48; j++)
-                memcpy(&tex[(j * width + currentx) * 3], &Font[((row * 512 + col) * 48 + (j + 32) * 512) * 3], cwidth * 3);
-        }
+        for (int j = 0; j < 48; j++)
+            memcpy(&tex[(j * width + currentx) * 3], &font[((row * 512 + col) * 48 + (j + 32) * 512) * 3], cwidth * 3);
 
         currentx += cwidth;
     }
 
     if (fromright)
-        x -= (float)width * size / 48;
+        x -= (width - extra) * size / 48;
 
     Vertex string[] =
     {
-        { { x + (float)width * size / 48, y        }, { 1.0f, 1.0f } },
-        { { x,                            y        }, { 0.0f, 1.0f } },
-        { { x,                            y + size }, { 0.0f, 0.0f } },
-        { { x + (float)width * size / 48, y + size }, { 1.0f, 0.0f } }
+        { { x + width * size / 48, y        }, { 1.0f, 1.0f } },
+        { { x,                     y        }, { 0.0f, 1.0f } },
+        { { x,                     y + size }, { 0.0f, 0.0f } },
+        { { x + width * size / 48, y + size }, { 1.0f, 0.0f } }
     };
 
     glBufferData(GL_ARRAY_BUFFER, sizeof(string), string, GL_DYNAMIC_DRAW);
@@ -307,49 +334,22 @@ void DrawLine(float x1, float y1, float x2, float y2, bool color)
     glDrawArrays(GL_LINES, 0, 2);
 }
 
+void DrawStaticUI()
+{
+    DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false, false);
+    DrawLine(30, 88, 1250, 88, false);
+    DrawLine(30, 648, 1250, 648, false);
+}
+
 void OptionsMenu()
 {
-    vector<const char*> options =
-    {
-        "Boot game directly",
-        "Threaded 3D renderer",
-        "Audio volume",
-        "Microphone input",
-        "Separate savefiles from savestates",
-        "Screen rotation",
-        "Mid-screen gap",
-        "Screen layout",
-        "Screen sizing",
-        "Screen filtering",
-        "Limit framerate",
-        "Switch overclock"
-    };
-
-    vector<vector<const char*>> possiblevalues =
-    {
-        { "Off", "On" },
-        { "Off", "On" },
-        { "0%", "25%", "50%", "75%", "100%" },
-        { "None", "Microphone", "White noise" },
-        { "Off", "On" },
-        { "0", "90", "180", "270" },
-        { "0 pixels", "1 pixel", "8 pixels", "64 pixels", "90 pixels", "128 pixels" },
-        { "Natural", "Vertical", "Horizontal" },
-        { "Even", "Emphasize top", "Emphasize bottom" },
-        { "Off", "On" },
-        { "Off", "On" },
-        { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" }
-    };
-
     unsigned int selection = 0;
 
     while (true)
     {
         glClear(GL_COLOR_BUFFER_BIT);
 
-        DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false, false);
-        DrawLine(30, 88, 1250, 88, false);
-        DrawLine(30, 648, 1250, 648, false);
+        DrawStaticUI();
         DrawLine(90, 124, 1190, 124, true);
         DrawString("Å Back     Ä OK", 1218, 667, 34, false, true);
 
@@ -412,9 +412,9 @@ void OptionsMenu()
 void FilesMenu()
 {
     if (MenuTheme == ColorSetId_Light)
-        glClearColor((float)235 / 255, (float)235 / 255, (float)235 / 255, 1.0f);
+        glClearColor(235.0f / 255, 235.0f / 255, 235.0f / 255, 1.0f);
     else
-        glClearColor((float)45 / 255, (float)45 / 255, (float)45 / 255, 1.0f);
+        glClearColor(45.0f / 255, 45.0f / 255, 45.0f / 255, 1.0f);
 
     if (strcmp(Config::LastROMFolder, "") == 0)
         ROMPath = "sdmc:/";
@@ -441,9 +441,7 @@ void FilesMenu()
         {
             glClear(GL_COLOR_BUFFER_BIT);
 
-            DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false, false);
-            DrawLine(30, 88, 1250, 88, false);
-            DrawLine(30, 648, 1250, 648, false);
+            DrawStaticUI();
             DrawLine(90, 124, 1190, 124, true);
             DrawString("É Exit     Ç Options     Å Back     Ä OK", 1218, 667, 34, false, true);
 
@@ -704,8 +702,8 @@ void RunCore(void *args)
         memcpy(Framebuffer, GPU::Framebuffer, 256 * 384 * 4);
 
         chrono::duration<double> elapsed = chrono::steady_clock::now() - start;
-        if (Config::LimitFPS && elapsed.count() < (float)1 / 60)
-            usleep(((float)1 / 60 - elapsed.count()) * 1000000);
+        if (Config::LimitFPS && elapsed.count() < 1.0f / 60)
+            usleep((1.0f / 60 - elapsed.count()) * 1000000);
     }
 }
 
@@ -715,7 +713,7 @@ void FillAudioBuffer()
     // which is 984 samples at the original sample rate
 
     s16 buf_in[984 * 2];
-    s16 *buf_out = (s16*)OutBufferData;
+    s16 *buf_out = (s16*)AudOutBufferData;
 
     int num_in = SPU::ReadOutput(buf_in, 984);
     int num_out = 1440;
@@ -751,12 +749,12 @@ void FillAudioBuffer()
     }
 }
 
-void PlayAudio(void *args)
+void AudioOutput(void *args)
 {
     while (!Paused)
     {
         FillAudioBuffer();
-        audoutPlayBuffer(&AudOutBuffer, &ReleasedOutBuffer);
+        audoutPlayBuffer(&AudOutBuffer, &RelOutBuffer);
     }
 }
 
@@ -764,14 +762,14 @@ void MicInput(void *args)
 {
     while (!Paused)
     {
-        audinCaptureBuffer(&AudInBuffer, &ReleasedInBuffer);
+        audinCaptureBuffer(&AudInBuffer, &RelInBuffer);
         if (Config::MicInputType == 0)
         {
             NDS::MicInputFrame(NULL, 0);
         }
         else if (Config::MicInputType == 1)
         {
-            NDS::MicInputFrame((s16*)InBufferData, 1440);
+            NDS::MicInputFrame((s16*)AudInBufferData, 1440);
         }
         else
         {
@@ -790,9 +788,8 @@ void StartCore(bool resume)
     StateSRAMPath = StatePath + ".sav";
 
     appletLockExit();
-
-    int clockspeeds[] = { 1020000000, 1224000000, 1581000000, 1785000000 };
-    pcvSetClockRate(PcvModule_Cpu, clockspeeds[Config::SwitchOverclock]);
+    pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[Config::SwitchOverclock]);
+    Paused = false;
 
     if (!resume)
     {
@@ -802,11 +799,9 @@ void StartCore(bool resume)
 
     SetScreenLayout();
 
-    Paused = false;
-
     threadCreate(&Core, RunCore, NULL, 0x80000, 0x30, 1);
     threadStart(&Core);
-    threadCreate(&Audio, PlayAudio, NULL, 0x80000, 0x30, 0);
+    threadCreate(&Audio, AudioOutput, NULL, 0x80000, 0x30, 0);
     threadStart(&Audio);
     threadCreate(&Mic, MicInput, NULL, 0x80000, 0x2F, 0);
     threadStart(&Mic);
@@ -815,12 +810,13 @@ void StartCore(bool resume)
 void PauseMenu()
 {
     Paused = true;
+    pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[0]);
     appletUnlockExit();
 
     if (MenuTheme == ColorSetId_Light)
-        glClearColor((float)235 / 255, (float)235 / 255, (float)235 / 255, 1.0f);
+        glClearColor(235.0f / 255, 235.0f / 255, 235.0f / 255, 1.0f);
     else
-        glClearColor((float)45 / 255, (float)45 / 255, (float)45 / 255, 1.0f);
+        glClearColor(45.0f / 255, 45.0f / 255, 45.0f / 255, 1.0f);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -828,14 +824,12 @@ void PauseMenu()
     vector<const char*> items = 
     {
         "Resume",
-        "Close lid",
+        LidClosed ? "Open lid" : "Close lid",
         "Save state",
         "Load state",
         "Options",
         "File browser"
     };
-    if (LidClosed)
-        items[1] = "Open lid";
 
     while (Paused)
     {
@@ -844,9 +838,7 @@ void PauseMenu()
         while (true)
         {
             glClear(GL_COLOR_BUFFER_BIT);
-            DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false, false);
-            DrawLine(30, 88, 1250, 88, false);
-            DrawLine(30, 648, 1250, 648, false);
+            DrawStaticUI();
             DrawLine(90, 124, 1190, 124, true);
             DrawString("Ä OK", 1218, 667, 34, false, true);
             for (unsigned int i = 0; i < items.size(); i++)
@@ -940,9 +932,7 @@ int main(int argc, char **argv)
     if (!LocalFileExists("bios7.bin") || !LocalFileExists("bios9.bin") || !LocalFileExists("firmware.bin"))
     {
         glClear(GL_COLOR_BUFFER_BIT);
-        DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false, false);
-        DrawLine(30, 88, 1250, 88, false);
-        DrawLine(30, 648, 1250, 648, false);
+        DrawStaticUI();
         DrawString("É Exit", 1218, 667, 34, false, true);
         DrawString("One or more of the following required files don't exist or couldn't be accessed:", 90, 124, 38, false, false);
         DrawString("bios7.bin -- ARM7 BIOS", 90, 124 + 38, 38, false, false);
@@ -966,25 +956,25 @@ int main(int argc, char **argv)
     int datasize = 1440 * 2 * 2;
     int buffersize = (datasize + 0xfff) & ~0xfff;
 
-    audoutInitialize();
-    audoutStartAudioOut();
-
-    OutBufferData = new u8[buffersize];
+    AudOutBufferData = new u8[buffersize];
     AudOutBuffer.next = NULL;
-    AudOutBuffer.buffer = OutBufferData;
+    AudOutBuffer.buffer = AudOutBufferData;
     AudOutBuffer.buffer_size = buffersize;
     AudOutBuffer.data_size = datasize;
     AudOutBuffer.data_offset = 0;
 
-    audinInitialize();
-    audinStartAudioIn();
-
-    InBufferData = new u8[buffersize];
+    AudInBufferData = new u8[buffersize];
     AudInBuffer.next = NULL;
-    AudInBuffer.buffer = InBufferData;
+    AudInBuffer.buffer = AudInBufferData;
     AudInBuffer.buffer_size = buffersize;
     AudInBuffer.data_size = datasize;
     AudInBuffer.data_offset = 0;
+
+    audoutInitialize();
+    audoutStartAudioOut();
+
+    audinInitialize();
+    audinStartAudioIn();
 
     pcvInitialize();
 
@@ -1062,7 +1052,7 @@ int main(int argc, char **argv)
     }
 
     Paused = true;
-    pcvSetClockRate(PcvModule_Cpu, 1020000000);
+    pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[0]);
     pcvExit();
     audinExit();
     audoutExit();

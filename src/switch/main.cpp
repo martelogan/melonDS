@@ -762,13 +762,13 @@ void MicInput(void *args)
 {
     while (!Paused)
     {
-        audinCaptureBuffer(&AudInBuffer, &RelInBuffer);
         if (Config::MicInputType == 0)
         {
             NDS::MicInputFrame(NULL, 0);
         }
         else if (Config::MicInputType == 1)
         {
+            audinCaptureBuffer(&AudInBuffer, &RelInBuffer);
             NDS::MicInputFrame((s16*)AudInBufferData, 1440);
         }
         else
@@ -788,7 +788,25 @@ void StartCore(bool resume)
     StateSRAMPath = StatePath + ".sav";
 
     appletLockExit();
-    pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[Config::SwitchOverclock]);
+
+    if (Config::AudioVolume > 0)
+    {
+        audoutInitialize();
+        audoutStartAudioOut();
+    }
+
+    if (Config::MicInputType == 1)
+    {
+        audinInitialize();
+        audinStartAudioIn();
+    }
+
+    if (Config::SwitchOverclock > 0)
+    {
+        pcvInitialize();
+        pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[Config::SwitchOverclock]);
+    }
+
     Paused = false;
 
     if (!resume)
@@ -801,17 +819,40 @@ void StartCore(bool resume)
 
     threadCreate(&Core, RunCore, NULL, 0x80000, 0x30, 1);
     threadStart(&Core);
-    threadCreate(&Audio, AudioOutput, NULL, 0x80000, 0x30, 0);
+    threadCreate(&Audio, AudioOutput, NULL, 0x80000, 0x2F, 0);
     threadStart(&Audio);
-    threadCreate(&Mic, MicInput, NULL, 0x80000, 0x2F, 0);
+    threadCreate(&Mic, MicInput, NULL, 0x80000, 0x30, 0);
     threadStart(&Mic);
+}
+
+void Pause()
+{
+    Paused = true;
+
+    if (Config::SwitchOverclock > 0)
+    {
+        pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[0]);
+        pcvExit();
+    }
+
+    if (Config::MicInputType == 1)
+    {
+        audinStopAudioIn();
+        audinExit();
+    }
+
+    if (Config::AudioVolume > 0)
+    {
+        audoutStopAudioOut();
+        audoutExit();
+    }
+
+    appletUnlockExit();
 }
 
 void PauseMenu()
 {
-    Paused = true;
-    pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[0]);
-    appletUnlockExit();
+    Pause();
 
     if (MenuTheme == ColorSetId_Light)
         glClearColor(235.0f / 255, 235.0f / 255, 235.0f / 255, 1.0f);
@@ -970,14 +1011,6 @@ int main(int argc, char **argv)
     AudInBuffer.data_size = datasize;
     AudInBuffer.data_offset = 0;
 
-    audoutInitialize();
-    audoutStartAudioOut();
-
-    audinInitialize();
-    audinStartAudioIn();
-
-    pcvInitialize();
-
     StartCore(false);
 
     Framebuffer = new u32[256 * 384];
@@ -1051,12 +1084,7 @@ int main(int argc, char **argv)
         eglSwapBuffers(Display, Surface);
     }
 
-    Paused = true;
-    pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[0]);
-    pcvExit();
-    audinExit();
-    audoutExit();
     DeInitRenderer();
-    appletUnlockExit();
+    Pause();
     return 0;
 }

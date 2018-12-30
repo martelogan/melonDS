@@ -911,12 +911,12 @@ void PauseMenu()
         }
         else if (selection == 2 || selection == 3)
         {
-            Savestate* state = new Savestate(const_cast<char*>(StatePath.c_str()), selection == 1);
+            Savestate* state = new Savestate(const_cast<char*>(StatePath.c_str()), selection == 2);
             if (!state->Error)
             {
                 NDS::DoSavestate(state);
                 if (Config::SavestateRelocSRAM)
-                    NDS::RelocateSave(const_cast<char*>(StateSRAMPath.c_str()), selection == 1);
+                    NDS::RelocateSave(const_cast<char*>(StateSRAMPath.c_str()), selection == 2);
             }
             delete state;
 

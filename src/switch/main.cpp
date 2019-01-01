@@ -49,14 +49,12 @@ unsigned char *Font, *FontColor;
 char *EmuDirectory;
 string ROMPath, SRAMPath, StatePath, StateSRAMPath;
 
-u8 *AudOutBufferData, *AudInBufferData;
+s16 *AudOutBufferData, *AudInBufferData;
 AudioOutBuffer AudOutBuffer, *RelOutBuffer;
 AudioInBuffer AudInBuffer, *RelInBuffer;
 
 u32 *Framebuffer;
 unsigned int TouchBoundLeft, TouchBoundRight, TouchBoundTop, TouchBoundBottom;
-
-Thread Core, Audio, Mic;
 bool Paused, LidClosed;
 
 EGLDisplay Display;
@@ -65,54 +63,6 @@ EGLSurface Surface;
 GLuint Program, VertArrayObj, VertBufferObj, Texture;
 
 const int ClockSpeeds[] = { 1020000000, 1224000000, 1581000000, 1785000000 };
-
-vector<const char*> options =
-{
-    "Boot game directly",
-    "Threaded 3D renderer",
-    "Audio volume",
-    "Microphone input",
-    "Separate savefiles from savestates",
-    "Screen rotation",
-    "Mid-screen gap",
-    "Screen layout",
-    "Screen sizing",
-    "Screen filtering",
-    "Limit framerate",
-    "Switch overclock"
-};
-
-vector<vector<const char*>> possiblevalues =
-{
-    { "Off", "On" },
-    { "Off", "On" },
-    { "0%", "25%", "50%", "75%", "100%" },
-    { "None", "Microphone", "White noise" },
-    { "Off", "On" },
-    { "0", "90", "180", "270" },
-    { "0 pixels", "1 pixel", "8 pixels", "64 pixels", "90 pixels", "128 pixels" },
-    { "Natural", "Vertical", "Horizontal" },
-    { "Even", "Emphasize top", "Emphasize bottom" },
-    { "Off", "On" },
-    { "Off", "On" },
-    { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" }
-};
-
-int *OptionValues[] =
-{
-    &Config::DirectBoot,
-    &Config::Threaded3D,
-    &Config::AudioVolume,
-    &Config::MicInputType,
-    &Config::SavestateRelocSRAM,
-    &Config::ScreenRotation,
-    &Config::ScreenGap,
-    &Config::ScreenLayout,
-    &Config::ScreenSizing,
-    &Config::ScreenFilter,
-    &Config::LimitFPS,
-    &Config::SwitchOverclock
-};
 
 const int CharWidth[] =
 {
@@ -126,6 +76,29 @@ const int CharWidth[] =
     10, 22, 20,  9, 12, 19,  9, 30, 20, 22,
     22, 22, 13, 17, 13, 20, 17, 29, 18, 18,
     17, 10,  9, 10, 25, 32, 40, 40, 40, 40
+};
+
+typedef struct
+{
+    const char *name;
+    vector<const char*> entries;
+    int *value;
+} Option;
+
+const vector<Option> Options =
+{
+    { "Boot game directly",                 { "Off", "On" },                                                               &Config::DirectBoot },
+    { "Threaded 3D renderer",               { "Off", "On" },                                                               &Config::Threaded3D },
+    { "Audio volume",                       { "0%", "25%", "50%", "75%", "100%" },                                         &Config::AudioVolume },
+    { "Microphone input",                   { "None", "Microphone", "White noise" },                                       &Config::MicInputType },
+    { "Separate savefiles from savestates", { "Off", "On" },                                                               &Config::SavestateRelocSRAM },
+    { "Screen rotation",                    { "0", "90", "180", "270" },                                                   &Config::ScreenRotation },
+    { "Mid-screen gap",                     { "0 pixels", "1 pixel", "8 pixels", "64 pixels", "90 pixels", "128 pixels" }, &Config::ScreenGap },
+    { "Screen layout",                      { "Natural", "Vertical", "Horizontal" },                                       &Config::ScreenLayout },
+    { "Screen sizing",                      { "Even", "Emphasize top", "Emphasize bottom" },                               &Config::ScreenSizing },
+    { "Screen filtering",                   { "Off", "On" },                                                               &Config::ScreenFilter },
+    { "Limit framerate",                    { "Off", "On" },                                                               &Config::LimitFPS },
+    { "Switch overclock",                   { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" },                            &Config::SwitchOverclock }
 };
 
 typedef struct
@@ -359,15 +332,15 @@ void OptionsMenu()
         {
             if (selection == 2)
             {
-                (*OptionValues[selection]) += 256 / 4;
-                if (*OptionValues[selection] > 256)
-                    *OptionValues[selection] = 0;
+                (*Options[selection].value) += 256 / 4;
+                if (*Options[selection].value > 256)
+                    *Options[selection].value = 0;
             }
             else
             {
-                (*OptionValues[selection])++;
-                if (*OptionValues[selection] >= (int)possiblevalues[selection].size())
-                    *OptionValues[selection] = 0;
+                (*Options[selection].value)++;
+                if (*Options[selection].value >= (int)Options[selection].entries.size())
+                    *Options[selection].value = 0;
             }
         }
         else if (pressed & KEY_B)
@@ -379,7 +352,7 @@ void OptionsMenu()
         {
             selection--;
         }
-        else if (pressed & KEY_DOWN && selection < options.size() - 1)
+        else if (pressed & KEY_DOWN && selection < Options.size() - 1)
         {
             selection++;
         }
@@ -389,18 +362,18 @@ void OptionsMenu()
             unsigned int row;
             if (selection < 4)
                 row = i;
-            else if (selection > options.size() - 4)
-                row = options.size() - 7 + i;
+            else if (selection > Options.size() - 4)
+                row = Options.size() - 7 + i;
             else
                 row = i + selection - 3;
 
             string currentvalue;
             if (row == 2)
-                currentvalue = possiblevalues[row][*OptionValues[row] * 4 / 256];
+                currentvalue = Options[row].entries[*Options[row].value * 4 / 256];
             else
-                currentvalue = possiblevalues[row][*OptionValues[row]];
+                currentvalue = Options[row].entries[*Options[row].value];
 
-            DrawString(options[row], 105, 140 + i * 70, 38, row == selection, false);
+            DrawString(Options[row].name, 105, 140 + i * 70, 38, row == selection, false);
             DrawString(currentvalue, 1175, 143 + i * 70, 32, row == selection, true);
             DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
         }
@@ -713,7 +686,7 @@ void FillAudioBuffer()
     // which is 984 samples at the original sample rate
 
     s16 buf_in[984 * 2];
-    s16 *buf_out = (s16*)AudOutBufferData;
+    s16 *buf_out = AudOutBufferData;
 
     int num_in = SPU::ReadOutput(buf_in, 984);
     int num_out = 1440;
@@ -769,7 +742,7 @@ void MicInput(void *args)
         else if (Config::MicInputType == 1)
         {
             audinCaptureBuffer(&AudInBuffer, &RelInBuffer);
-            NDS::MicInputFrame((s16*)AudInBufferData, 1440);
+            NDS::MicInputFrame(AudInBufferData, 1440);
         }
         else
         {
@@ -788,25 +761,21 @@ void StartCore(bool resume)
     StateSRAMPath = StatePath + ".sav";
 
     appletLockExit();
-
     if (Config::AudioVolume > 0)
     {
         audoutInitialize();
         audoutStartAudioOut();
     }
-
     if (Config::MicInputType == 1)
     {
         audinInitialize();
         audinStartAudioIn();
     }
-
     if (Config::SwitchOverclock > 0)
     {
         pcvInitialize();
         pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[Config::SwitchOverclock]);
     }
-
     Paused = false;
 
     if (!resume)
@@ -817,36 +786,24 @@ void StartCore(bool resume)
 
     SetScreenLayout();
 
-    threadCreate(&Core, RunCore, NULL, 0x80000, 0x30, 1);
-    threadStart(&Core);
-    threadCreate(&Audio, AudioOutput, NULL, 0x80000, 0x2F, 0);
-    threadStart(&Audio);
-    threadCreate(&Mic, MicInput, NULL, 0x80000, 0x30, 0);
-    threadStart(&Mic);
+    Thread core, audio, mic;
+    threadCreate(&core, RunCore, NULL, 0x80000, 0x30, 1);
+    threadStart(&core);
+    threadCreate(&audio, AudioOutput, NULL, 0x80000, 0x2F, 0);
+    threadStart(&audio);
+    threadCreate(&mic, MicInput, NULL, 0x80000, 0x30, 0);
+    threadStart(&mic);
 }
 
 void Pause()
 {
     Paused = true;
-
-    if (Config::SwitchOverclock > 0)
-    {
-        pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[0]);
-        pcvExit();
-    }
-
-    if (Config::MicInputType == 1)
-    {
-        audinStopAudioIn();
-        audinExit();
-    }
-
-    if (Config::AudioVolume > 0)
-    {
-        audoutStopAudioOut();
-        audoutExit();
-    }
-
+    pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[0]);
+    pcvExit();
+    audinStopAudioIn();
+    audinExit();
+    audoutStopAudioOut();
+    audoutExit();
     appletUnlockExit();
 }
 
@@ -994,26 +951,23 @@ int main(int argc, char **argv)
         }
     }
 
-    int datasize = 1440 * 2 * 2;
-    int buffersize = (datasize + 0xfff) & ~0xfff;
-
-    AudOutBufferData = new u8[buffersize];
+    AudOutBufferData = new s16[(1440 * 2 + 0xfff) & ~0xfff];
     AudOutBuffer.next = NULL;
     AudOutBuffer.buffer = AudOutBufferData;
-    AudOutBuffer.buffer_size = buffersize;
-    AudOutBuffer.data_size = datasize;
+    AudOutBuffer.buffer_size = (1440 * 2 * sizeof(s16) + 0xfff) & ~0xfff;
+    AudOutBuffer.data_size = 1440 * 2 * sizeof(s16);
     AudOutBuffer.data_offset = 0;
 
-    AudInBufferData = new u8[buffersize];
+    AudInBufferData = new s16[(1440 * 2 + 0xfff) & ~0xfff];
     AudInBuffer.next = NULL;
     AudInBuffer.buffer = AudInBufferData;
-    AudInBuffer.buffer_size = buffersize;
-    AudInBuffer.data_size = datasize;
+    AudInBuffer.buffer_size = (1440 * 2 * sizeof(s16) + 0xfff) & ~0xfff;
+    AudInBuffer.data_size = 1440 * 2 * sizeof(s16);
     AudInBuffer.data_offset = 0;
 
-    StartCore(false);
-
     Framebuffer = new u32[256 * 384];
+
+    StartCore(false);
 
     HidControllerKeys keys[] = { KEY_A, KEY_B, KEY_MINUS, KEY_PLUS, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ZR, KEY_ZL, KEY_X, KEY_Y };
 

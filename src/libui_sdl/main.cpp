@@ -48,6 +48,7 @@
 // '9': load/save arbitrary file
 const int kSavestateNum[9] = {1, 2, 3, 4, 5, 6, 7, 8, 0};
 
+const int kScreenSize[4] = {1, 2, 3, 4};
 const int kScreenRot[4] = {0, 1, 2, 3};
 const int kScreenGap[6] = {0, 1, 8, 64, 90, 128};
 const int kScreenLayout[3] = {0, 1, 2};
@@ -59,6 +60,8 @@ char* EmuDirectory;
 
 uiWindow* MainWindow;
 uiArea* MainDrawArea;
+
+int WindowWidth, WindowHeight;
 
 uiMenuItem* MenuItem_SaveState;
 uiMenuItem* MenuItem_LoadState;
@@ -401,7 +404,11 @@ int EmuThreadFunc(void* burp)
     if (Joystick)
     {
         njoybuttons = SDL_JoystickNumButtons(Joystick);
-        if (njoybuttons) joybuttons = new Uint8[njoybuttons];
+        if (njoybuttons)
+        {
+            joybuttons = new Uint8[njoybuttons];
+            memset(joybuttons, 0, sizeof(Uint8)*njoybuttons);
+        }
     }
 
     u32 nframes = 0;
@@ -417,14 +424,36 @@ int EmuThreadFunc(void* burp)
         {
             EmuStatus = 1;
 
+            SDL_JoystickUpdate();
+
+            if (Joystick)
+            {
+                if (!SDL_JoystickGetAttached(Joystick))
+                {
+                    SDL_JoystickClose(Joystick);
+                    Joystick = NULL;
+                }
+            }
+            if (!Joystick && (SDL_NumJoysticks() > 0))
+            {
+                Joystick = SDL_JoystickOpen(0);
+                if (Joystick)
+                {
+                    njoybuttons = SDL_JoystickNumButtons(Joystick);
+                    if (joybuttons) delete[] joybuttons;
+                    if (njoybuttons)
+                    {
+                        joybuttons = new Uint8[njoybuttons];
+                        memset(joybuttons, 0, sizeof(Uint8)*njoybuttons);
+                    }
+                }
+            }
 
             // poll input
             u32 keymask = KeyInputMask;
             u32 joymask = 0xFFF;
             if (Joystick)
             {
-                SDL_JoystickUpdate();
-
                 Uint32 hat = SDL_JoystickGetHat(Joystick, 0);
                 Sint16 axisX = SDL_JoystickGetAxis(Joystick, 0);
                 Sint16 axisY = SDL_JoystickGetAxis(Joystick, 1);
@@ -506,7 +535,7 @@ int EmuThreadFunc(void* burp)
                 if (guess != AutoScreenSizing)
                 {
                     AutoScreenSizing = guess;
-                    SetupScreenRects(Config::WindowWidth, Config::WindowHeight);
+                    SetupScreenRects(WindowWidth, WindowHeight);
                 }
             }
 
@@ -986,8 +1015,18 @@ void OnAreaResize(uiAreaHandler* handler, uiArea* area, int width, int height)
     // should those be the size of the uiArea, or the size of the window client area?
     // for now the uiArea fills the whole window anyway
     // but... we never know, I guess
-    Config::WindowWidth = width;
-    Config::WindowHeight = height;
+    WindowWidth = width;
+    WindowHeight = height;
+
+    int max = uiWindowMaximized(MainWindow);
+    int min = uiWindowMinimized(MainWindow);
+
+    Config::WindowMaximized = max;
+    if (!max && !min)
+    {
+        Config::WindowWidth = width;
+        Config::WindowHeight = height;
+    }
 }
 
 
@@ -1462,6 +1501,37 @@ void EnsureProperMinSize()
     }
 }
 
+void OnSetScreenSize(uiMenuItem* item, uiWindow* window, void* param)
+{
+    int factor = *(int*)param;
+    bool isHori = (ScreenRotation == 1 || ScreenRotation == 3);
+
+    int w = 256*factor;
+    int h = 192*factor;
+
+    if (ScreenLayout == 0) // natural
+    {
+        if (isHori)
+            uiWindowSetContentSize(window, (h*2)+ScreenGap, w);
+        else
+            uiWindowSetContentSize(window, w, (h*2)+ScreenGap);
+    }
+    else if (ScreenLayout == 1) // vertical
+    {
+        if (isHori)
+            uiWindowSetContentSize(window, h, (w*2)+ScreenGap);
+        else
+            uiWindowSetContentSize(window, w, (h*2)+ScreenGap);
+    }
+    else // horizontal
+    {
+        if (isHori)
+            uiWindowSetContentSize(window, (h*2)+ScreenGap, w);
+        else
+            uiWindowSetContentSize(window, (w*2)+ScreenGap, h);
+    }
+}
+
 void OnSetScreenRotation(uiMenuItem* item, uiWindow* window, void* param)
 {
     int rot = *(int*)param;
@@ -1486,8 +1556,6 @@ void OnSetScreenRotation(uiMenuItem* item, uiWindow* window, void* param)
             w = blarg;
 
             uiWindowSetContentSize(window, w, h);
-            Config::WindowWidth = w;
-            Config::WindowHeight = h;
         }
     }
 
@@ -1505,7 +1573,7 @@ void OnSetScreenGap(uiMenuItem* item, uiWindow* window, void* param)
     ScreenGap = gap;
 
     EnsureProperMinSize();
-    SetupScreenRects(Config::WindowWidth, Config::WindowHeight);
+    SetupScreenRects(WindowWidth, WindowHeight);
 
     for (int i = 0; i < 6; i++)
         uiMenuItemSetChecked(MenuItem_ScreenGap[i], kScreenGap[i]==ScreenGap);
@@ -1517,7 +1585,7 @@ void OnSetScreenLayout(uiMenuItem* item, uiWindow* window, void* param)
     ScreenLayout = layout;
 
     EnsureProperMinSize();
-    SetupScreenRects(Config::WindowWidth, Config::WindowHeight);
+    SetupScreenRects(WindowWidth, WindowHeight);
 
     for (int i = 0; i < 3; i++)
         uiMenuItemSetChecked(MenuItem_ScreenLayout[i], i==ScreenLayout);
@@ -1528,7 +1596,7 @@ void OnSetScreenSizing(uiMenuItem* item, uiWindow* window, void* param)
     int sizing = *(int*)param;
     ScreenSizing = sizing;
 
-    SetupScreenRects(Config::WindowWidth, Config::WindowHeight);
+    SetupScreenRects(WindowWidth, WindowHeight);
 
     for (int i = 0; i < 4; i++)
         uiMenuItemSetChecked(MenuItem_ScreenSizing[i], i==ScreenSizing);
@@ -1586,7 +1654,7 @@ int main(int argc, char** argv)
         }
         if (len > 0)
         {
-            EmuDirectory = new char[len];
+            EmuDirectory = new char[len+1];
             strncpy(EmuDirectory, argv[0], len);
             EmuDirectory[len] = '\0';
         }
@@ -1647,6 +1715,24 @@ int main(int argc, char** argv)
         uiUninit();
         SDL_Quit();
         return 0;
+    }
+
+    {
+        FILE* f = melon_fopen_local("romlist.bin", "rb");
+        if (f)
+        {
+            u32 data;
+            fread(&data, 4, 1, f);
+            fclose(f);
+
+            if ((data >> 24) == 0) // old CRC-based list
+            {
+                uiMsgBoxError(NULL,
+                              "Your version of romlist.bin is outdated.",
+                              "Save memory type detection will not work correctly.\n\n"
+                              "You should use the latest version of romlist.bin (provided in melonDS release packages).");
+            }
+        }
     }
 
     uiMenu* menu;
@@ -1737,6 +1823,19 @@ int main(int argc, char** argv)
     }
     uiMenuAppendSeparator(menu);
     {
+        uiMenu* submenu = uiNewMenu("Screen size");
+
+        for (int i = 0; i < 4; i++)
+        {
+            char name[32];
+            sprintf(name, "%dx", kScreenSize[i]);
+            uiMenuItem* item = uiMenuAppendItem(submenu, name);
+            uiMenuItemOnClicked(item, OnSetScreenSize, (void*)&kScreenSize[i]);
+        }
+
+        uiMenuAppendSubmenu(menu, submenu);
+    }
+    {
         uiMenu* submenu = uiNewMenu("Screen rotation");
 
         for (int i = 0; i < 4; i++)
@@ -1803,7 +1902,10 @@ int main(int argc, char** argv)
     //if (w < 256) w = 256;
     //if (h < 384) h = 384;
 
-    MainWindow = uiNewWindow("melonDS " MELONDS_VERSION, w, h, 1, 1);
+    WindowWidth = w;
+    WindowHeight = h;
+
+    MainWindow = uiNewWindow("melonDS " MELONDS_VERSION, w, h, Config::WindowMaximized, 1, 1);
     uiWindowOnClosing(MainWindow, OnCloseWindow, NULL);
 
     uiWindowSetDropTarget(MainWindow, 1);

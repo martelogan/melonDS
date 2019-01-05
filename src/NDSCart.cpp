@@ -76,9 +76,6 @@ void DoSavestate(Savestate* file)
     // we reload the SRAM contents.
     // it should be the same file (as it should be the same ROM, duh)
     // but the contents may change
-    // TODO maybe: possibility to save to a separate file when using savestates????
-
-    // also the SRAM size shouldn't change. unless something something autodetect something but fuck that code.
 
     //if (!file->Saving && SRAMLength)
     //    delete[] SRAM;
@@ -134,14 +131,14 @@ void LoadSave(const char* path, u32 type)
     }
     else
     {
-        if (type > 8) type = 0;
-        int sramlen[] = {0, 512, 8192, 65536, 256*1024, 512*1024, 1024*1024, 8192*1024, 32768*1024};
+        if (type > 9) type = 0;
+        int sramlen[] = {0, 512, 8192, 65536, 128*1024, 256*1024, 512*1024, 1024*1024, 8192*1024, 32768*1024};
         SRAMLength = sramlen[type];
 
         if (SRAMLength)
         {
             SRAM = new u8[SRAMLength];
-            memset(SRAM, 0, SRAMLength);
+            memset(SRAM, 0xFF, SRAMLength);
         }
     }
 
@@ -149,7 +146,8 @@ void LoadSave(const char* path, u32 type)
     {
     case 512: WriteFunc = Write_EEPROMTiny; break;
     case 8192:
-    case 65536: WriteFunc = Write_EEPROM; break;
+    case 65536:
+    case 128*1024: WriteFunc = Write_EEPROM; break;
     case 256*1024:
     case 512*1024:
     case 1024*1024:
@@ -242,10 +240,13 @@ void Write_EEPROMTiny(u8 val, bool islast)
 
 void Write_EEPROM(u8 val, bool islast)
 {
+    u32 addrsize = 2;
+    if (SRAMLength > 65536) addrsize++;
+
     switch (CurCmd)
     {
     case 0x02:
-        if (DataPos < 2)
+        if (DataPos < addrsize)
         {
             Addr <<= 8;
             Addr |= val;
@@ -259,7 +260,7 @@ void Write_EEPROM(u8 val, bool islast)
         break;
 
     case 0x03:
-        if (DataPos < 2)
+        if (DataPos < addrsize)
         {
             Addr <<= 8;
             Addr |= val;
@@ -809,11 +810,11 @@ void ApplyDLDIPatch()
 }
 
 
-bool ReadROMParams(u32* params)
+bool ReadROMParams(u32 gamecode, u32* params)
 {
     // format for romlist.bin:
-    // [CRC32] [ROM size] [save type] [reserved]
-    // list must be sorted by CRC
+    // [gamecode] [ROM size] [save type] [reserved]
+    // list must be sorted by gamecode
 
     FILE* f = melon_fopen_local("romlist.bin", "rb");
     if (!f) return false;
@@ -827,13 +828,13 @@ bool ReadROMParams(u32* params)
     u32 chk_size = len >> 1;
     for (;;)
     {
-        u32 crc = 0;
+        u32 key = 0;
         fseek(f, offset + (chk_size << 4), SEEK_SET);
-        fread(&crc, 4, 1, f);
+        fread(&key, 4, 1, f);
 
-        printf("chk_size=%d, crc=%08X, wanted=%08X, offset=%08X\n", chk_size, crc, CartCRC, offset);
+        printf("chk_size=%d, key=%08X, wanted=%08X, offset=%08X\n", chk_size, key, gamecode, offset);
 
-        if (crc == CartCRC)
+        if (key == gamecode)
         {
             fread(params, 4, 3, f);
             fclose(f);
@@ -841,7 +842,7 @@ bool ReadROMParams(u32* params)
         }
         else
         {
-            if (crc < CartCRC)
+            if (key < gamecode)
             {
                 if (chk_size == 0)
                     offset += 0x10;
@@ -889,6 +890,7 @@ bool LoadROM(const char* path, const char* sram, bool direct)
     u32 gamecode;
     fseek(f, 0x0C, SEEK_SET);
     fread(&gamecode, 4, 1, f);
+    printf("Game code: %c%c%c%c\n", gamecode&0xFF, (gamecode>>8)&0xFF, (gamecode>>16)&0xFF, gamecode>>24);
 
     CartROM = new u8[CartROMSize];
     memset(CartROM, 0, CartROMSize);
@@ -902,7 +904,7 @@ bool LoadROM(const char* path, const char* sram, bool direct)
     printf("ROM CRC32: %08X\n", CartCRC);
 
     u32 romparams[3];
-    if (!ReadROMParams(romparams))
+    if (!ReadROMParams(gamecode, romparams))
     {
         // set defaults
         printf("ROM entry not found\n");
@@ -923,7 +925,7 @@ bool LoadROM(const char* path, const char* sram, bool direct)
     // it just has to stay the same throughout gameplay
     CartID = 0x000000C2;
 
-    if (CartROMSize <= 128*1024*1024)
+    if (CartROMSize >= 1024*1024 && CartROMSize <= 128*1024*1024)
         CartID |= ((CartROMSize >> 20) - 1) << 8;
     else
         CartID |= (0x100 - (CartROMSize >> 28)) << 8;
@@ -1264,7 +1266,7 @@ void WriteROMCnt(u32 val)
     if (datasize == 0)
         NDS::ScheduleEvent(NDS::Event_ROMTransfer, false, xfercycle*cmddelay, ROMEndTransfer, 0);
     else
-        NDS::ScheduleEvent(NDS::Event_ROMTransfer, true, xfercycle*(cmddelay+4), ROMPrepareData, 0);
+        NDS::ScheduleEvent(NDS::Event_ROMTransfer, false, xfercycle*(cmddelay+4), ROMPrepareData, 0);
 }
 
 u32 ReadROMData()
@@ -1279,7 +1281,7 @@ u32 ReadROMData()
             u32 delay = 4;
             if (!(DataOutPos & 0x1FF)) delay += ((ROMCnt >> 16) & 0x3F);
 
-            NDS::ScheduleEvent(NDS::Event_ROMTransfer, true, xfercycle*delay, ROMPrepareData, 0);
+            NDS::ScheduleEvent(NDS::Event_ROMTransfer, false, xfercycle*delay, ROMPrepareData, 0);
         }
         else
             ROMEndTransfer(0);

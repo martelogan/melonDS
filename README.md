@@ -2,7 +2,7 @@
 <h2 align="center"><b>melonDS</b></h2>
 <p align="center">
 <a href="http://melonds.kuribo64.net/" alt="melonDS website"><img src="https://img.shields.io/badge/website-melonds.kuribo64.net-%2331352e.svg"></a>
-<a href="http://melonds.kuribo64.net/downloads.php" alt="Release: 0.7.1"><img src="https://img.shields.io/badge/release-0.7.1-%235c913b.svg"></a>
+<a href="http://melonds.kuribo64.net/downloads.php" alt="Release: 0.7.2"><img src="https://img.shields.io/badge/release-0.7.2-%235c913b.svg"></a>
 <a href="https://www.gnu.org/licenses/gpl-3.0" alt="License: GPLv3"><img src="https://img.shields.io/badge/License-GPL%20v3-%23ff554d.svg"></a>
 <a href="https://kiwiirc.com/client/irc.badnik.net/?nick=IRC-Source_?#melonds" alt="IRC channel: #melonds"><img src="https://img.shields.io/badge/IRC%20chat-%23melonds-%23dd2e44.svg"></a>
 </p>
@@ -35,12 +35,22 @@ As for the rest, the interface should be pretty straightforward. If you have a q
 
 ### Linux:
 
+* Install dependencies:
+
+```sh
+sudo apt-get install libpcap0.8-dev libcurl4-gnutls-dev libsdl2-dev gtk+-3.0
+```
+
+* Compile:
+
 ```sh
 mkdir -p build
 cd build
 cmake ..
 make
 ```
+
+
 
 ### Windows:
 

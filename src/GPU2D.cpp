@@ -220,6 +220,20 @@ u8 GPU2D::Read8(u32 addr)
 {
     switch (addr & 0x00000FFF)
     {
+    case 0x000: return DispCnt & 0xFF;
+    case 0x001: return (DispCnt >> 8) & 0xFF;
+    case 0x002: return (DispCnt >> 16) & 0xFF;
+    case 0x003: return DispCnt >> 24;
+
+    case 0x008: return BGCnt[0] & 0xFF;
+    case 0x009: return BGCnt[0] >> 8;
+    case 0x00A: return BGCnt[1] & 0xFF;
+    case 0x00B: return BGCnt[1] >> 8;
+    case 0x00C: return BGCnt[2] & 0xFF;
+    case 0x00D: return BGCnt[2] >> 8;
+    case 0x00E: return BGCnt[3] & 0xFF;
+    case 0x00F: return BGCnt[3] >> 8;
+
     case 0x048: return WinCnt[0];
     case 0x049: return WinCnt[1];
     case 0x04A: return WinCnt[2];
@@ -234,8 +248,8 @@ u16 GPU2D::Read16(u32 addr)
 {
     switch (addr & 0x00000FFF)
     {
-    case 0x000: return DispCnt&0xFFFF;
-    case 0x002: return DispCnt>>16;
+    case 0x000: return DispCnt & 0xFFFF;
+    case 0x002: return DispCnt >> 16;
 
     case 0x008: return BGCnt[0];
     case 0x00A: return BGCnt[1];
@@ -273,6 +287,8 @@ u32 GPU2D::Read32(u32 addr)
 
 void GPU2D::Write8(u32 addr, u8 val)
 {
+    if (!Enabled) return;
+
     switch (addr & 0x00000FFF)
     {
     case 0x000: DispCnt = (DispCnt & 0xFFFFFF00) | val; return;
@@ -353,6 +369,8 @@ void GPU2D::Write8(u32 addr, u8 val)
 
 void GPU2D::Write16(u32 addr, u16 val)
 {
+    if (!Enabled) return;
+
     switch (addr & 0x00000FFF)
     {
     case 0x000: DispCnt = (DispCnt & 0xFFFF0000) | val; return;
@@ -482,6 +500,8 @@ void GPU2D::Write16(u32 addr, u16 val)
 
 void GPU2D::Write32(u32 addr, u32 val)
 {
+    if (!Enabled) return;
+
     switch (addr & 0x00000FFF)
     {
     case 0x000:
@@ -542,19 +562,21 @@ void GPU2D::DrawScanline(u32 line)
 
     line = GPU::VCount;
 
+    bool forceblank = false;
+
     // scanlines that end up outside of the GPU drawing range
     // (as a result of writing to VCount) are filled white
-    if (line > 192)
-    {
-        for (int i = 0; i < 256; i++)
-            dst[i] = 0xFFFFFFFF;
+    if (line > 192) forceblank = true;
 
-        return;
-    }
+    // GPU B can be completely disabled by POWCNT1
+    // oddly that's not the case for GPU A
+    if (Num && !Enabled) forceblank = true;
 
     // forced blank
     // (checkme: are there still things that can run under this mode? likely not)
-    if (DispCnt & (1<<7))
+    if (DispCnt & (1<<7)) forceblank = true;
+
+    if (forceblank)
     {
         for (int i = 0; i < 256; i++)
             dst[i] = 0xFFFFFFFF;
@@ -1210,21 +1232,27 @@ void GPU2D::DrawScanline_Mode1(u32 line, u32* dst)
 
             continue;
         }
-        else if ((BlendCnt & flag1) && (windowmask[i] & 0x20))
+        else
         {
-            if ((bldcnteffect == 1) && (BlendCnt & target2))
+            if (flag1 & 0x80)      flag1 = 0x10;
+            else if (flag1 & 0x40) flag1 = 0x01;
+
+            if ((BlendCnt & flag1) && (windowmask[i] & 0x20))
             {
-                coloreffect = 1;
-                eva = EVA;
-                evb = EVB;
+                if ((bldcnteffect == 1) && (BlendCnt & target2))
+                {
+                    coloreffect = 1;
+                    eva = EVA;
+                    evb = EVB;
+                }
+                else if (bldcnteffect >= 2)
+                    coloreffect = bldcnteffect;
+                else
+                    coloreffect = 0;
             }
-            else if (bldcnteffect >= 2)
-                coloreffect = bldcnteffect;
             else
                 coloreffect = 0;
         }
-        else
-            coloreffect = 0;
 
         switch (coloreffect)
         {
@@ -1897,7 +1925,6 @@ void GPU2D::InterleaveSprites(u32* buf, u32 prio, u32* dst)
     {
         if (((buf[i] & 0xF8000) == prio) && (windowmask[i] & 0x10))
         {
-            u32 blendfunc = 0;
             DrawPixel(&dst[i], buf[i] & 0x7FFF, buf[i] & 0xFF000000);
         }
     }

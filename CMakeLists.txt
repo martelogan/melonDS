@@ -130,7 +130,7 @@ elseif (WIN32)
         src/libui_sdl/libui/windows/drawtext.cpp
         src/libui_sdl/libui/windows/dwrite.cpp
         src/libui_sdl/libui/windows/editablecombo.cpp
-        #src/libui_sdl/libui/windows/entry.cpp
+        src/libui_sdl/libui/windows/entry.cpp
         src/libui_sdl/libui/windows/events.cpp
         src/libui_sdl/libui/windows/fontbutton.cpp
         src/libui_sdl/libui/windows/fontdialog.cpp
@@ -168,10 +168,12 @@ elseif (WIN32)
     LINK_LIBRARIES("dwrite")
     LINK_LIBRARIES("usp10")
     LINK_LIBRARIES("ws2_32")
+    LINK_LIBRARIES("uxtheme")
 endif (UNIX)
 
 find_package(SDL2 REQUIRED)
 include_directories(${SDL2_INCLUDE_DIR})
+string(STRIP ${SDL2_LIBRARIES} SDL2_LIBRARIES)
 link_libraries(${SDL2_LIBRARIES})
 
 add_executable(${PROJECT_WX} ${SOURCES})

@@ -39,6 +39,7 @@ int HKJoyMapping[HK_MAX];
 
 int WindowWidth;
 int WindowHeight;
+int WindowMaximized;
 
 int ScreenRotation;
 int ScreenGap;
@@ -112,6 +113,7 @@ ConfigEntry ConfigFile[] =
 
     {"WindowWidth",  0, &WindowWidth,  256, NULL, 0},
     {"WindowHeight", 0, &WindowHeight, 384, NULL, 0},
+    {"WindowMax", 0, &WindowMaximized, 0, NULL, 0},
 #endif
 
     {"ScreenRotation", 0, &ScreenRotation, 0, NULL, 0},
@@ -130,7 +132,7 @@ ConfigEntry ConfigFile[] =
     {"SockBindAnyAddr", 0, &SocketBindAnyAddr, 0, NULL, 0},
 #endif
 
-    {"SavStaRelocSRAM", 0, &SavestateRelocSRAM, 1, NULL, 0},
+    {"SavStaRelocSRAM", 0, &SavestateRelocSRAM, 0, NULL, 0},
 
     {"AudioVolume", 0, &AudioVolume, 256, NULL, 0},
     {"MicInputType", 0, &MicInputType, 1, NULL, 0},

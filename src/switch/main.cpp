@@ -53,7 +53,7 @@ s16 *AudOutBufferData, *AudInBufferData;
 AudioOutBuffer AudOutBuffer, *RelOutBuffer;
 AudioInBuffer AudInBuffer, *RelInBuffer;
 
-u32 *Framebuffer;
+u32 *DisplayBuffer;
 unsigned int TouchBoundLeft, TouchBoundRight, TouchBoundTop, TouchBoundBottom;
 bool Paused, LidClosed;
 
@@ -672,7 +672,7 @@ void RunCore(void *args)
         chrono::steady_clock::time_point start = chrono::steady_clock::now();
 
         NDS::RunFrame();
-        memcpy(Framebuffer, GPU::Framebuffer, 256 * 384 * 4);
+        memcpy(DisplayBuffer, GPU::Framebuffer, 256 * 384 * 4);
 
         chrono::duration<double> elapsed = chrono::steady_clock::now() - start;
         if (Config::LimitFPS && elapsed.count() < 1.0f / 60)
@@ -965,9 +965,9 @@ int main(int argc, char **argv)
     AudInBuffer.data_size = 1440 * 2 * sizeof(s16);
     AudInBuffer.data_offset = 0;
 
-    Framebuffer = new u32[256 * 384];
-
     StartCore(false);
+
+    DisplayBuffer = new u32[256 * 384];
 
     HidControllerKeys keys[] = { KEY_A, KEY_B, KEY_MINUS, KEY_PLUS, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ZR, KEY_ZL, KEY_X, KEY_Y };
 
@@ -1031,9 +1031,9 @@ int main(int argc, char **argv)
         }
 
         glClear(GL_COLOR_BUFFER_BIT);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 192, 0, GL_BGRA, GL_UNSIGNED_BYTE, Framebuffer);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 192, 0, GL_BGRA, GL_UNSIGNED_BYTE, DisplayBuffer);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 192, 0, GL_BGRA, GL_UNSIGNED_BYTE, &Framebuffer[256 * 192]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 192, 0, GL_BGRA, GL_UNSIGNED_BYTE, &DisplayBuffer[256 * 192]);
         glDrawArrays(GL_TRIANGLE_FAN, 4, 4);
         eglSwapBuffers(Display, Surface);
     }

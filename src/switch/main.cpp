@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <chrono>
 #include <dirent.h>
+#include <malloc.h>
 #include <stdio.h>
 #include <string.h>
 #include <switch.h>
@@ -50,7 +51,6 @@ char *EmuDirectory;
 string ROMPath, SRAMPath, StatePath, StateSRAMPath;
 
 s16 *AudOutBufferData, *AudInBufferData;
-AudioOutBuffer AudOutBuffer, *RelOutBuffer;
 AudioInBuffer AudInBuffer, *RelInBuffer;
 
 u32 *DisplayBuffer;
@@ -658,33 +658,32 @@ void RunCore(void *args)
 
 void FillAudioBuffer()
 {
-    // 1440 samples seems to be the sweet spot for audout,
-    // which is about 984 samples at the original sample rate
+    // 1024 samples is about 1400 at the original sample rate
 
-    s16 buf_in[984 * 2];
+    s16 buf_in[1400 * 2];
     s16 *buf_out = AudOutBufferData;
 
-    int num_in = SPU::ReadOutput(buf_in, 984);
-    int num_out = 1440;
+    int num_in = SPU::ReadOutput(buf_in, 1400);
+    int num_out = 1024;
 
     int margin = 6;
-    if (num_in < 984 - margin)
+    if (num_in < 1400 - margin)
     {
         int last = num_in - 1;
         if (last < 0)
             last = 0;
 
-        for (int i = num_in; i < 984 - margin; i++)
+        for (int i = num_in; i < 1400 - margin; i++)
             ((u32*)buf_in)[i] = ((u32*)buf_in)[last];
 
-        num_in = 984 - margin;
+        num_in = 1400 - margin;
     }
 
     float res_incr = (float)num_in / num_out;
     float res_timer = 0;
     int res_pos = 0;
 
-    for (int i = 0; i < 1440; i++)
+    for (int i = 0; i < 1024; i++)
     {
         buf_out[i * 2] = (buf_in[res_pos * 2] * Config::AudioVolume) >> 8;
         buf_out[i * 2 + 1] = (buf_in[res_pos * 2 + 1] * Config::AudioVolume) >> 8;
@@ -695,15 +694,6 @@ void FillAudioBuffer()
             res_timer--;
             res_pos++;
         }
-    }
-}
-
-void AudioOutput(void *args)
-{
-    while (!Paused)
-    {
-        FillAudioBuffer();
-        audoutPlayBuffer(&AudOutBuffer, &RelOutBuffer);
     }
 }
 
@@ -737,11 +727,6 @@ void StartCore(bool resume)
     StateSRAMPath = StatePath + ".sav";
 
     appletLockExit();
-    if (Config::AudioVolume > 0)
-    {
-        audoutInitialize();
-        audoutStartAudioOut();
-    }
     if (Config::MicInputType == 1)
     {
         audinInitialize();
@@ -762,11 +747,9 @@ void StartCore(bool resume)
 
     SetScreenLayout();
 
-    Thread core, audio, mic;
+    Thread core, mic;
     threadCreate(&core, RunCore, NULL, 0x80000, 0x30, 1);
     threadStart(&core);
-    threadCreate(&audio, AudioOutput, NULL, 0x80000, 0x2F, 0);
-    threadStart(&audio);
     threadCreate(&mic, MicInput, NULL, 0x80000, 0x30, 0);
     threadStart(&mic);
 }
@@ -778,8 +761,6 @@ void Pause()
     pcvExit();
     audinStopAudioIn();
     audinExit();
-    audoutStopAudioOut();
-    audoutExit();
     appletUnlockExit();
 }
 
@@ -893,6 +874,39 @@ int main(int argc, char **argv)
     }
     romfsExit();
 
+    AudioRendererConfig arconfig =
+    {
+        .output_rate     = AudioRendererOutputRate_48kHz,
+        .num_voices      = 1,
+        .num_effects     = 0,
+        .num_sinks       = 1,
+        .num_mix_objs    = 1,
+        .num_mix_buffers = 2,
+    };
+
+    audrenInitialize(&arconfig);
+    audrenStartAudioRenderer();
+
+    AudOutBufferData = (s16*)memalign(0x1000, (1024 * sizeof(s16) + 0xfff) & ~0xfff);
+    AudioDriverWaveBuf wavebuf = {0};
+    wavebuf.data_pcm16 = AudOutBufferData;
+    wavebuf.size = 1024 * sizeof(s16);
+    wavebuf.start_sample_offset = 0;
+    wavebuf.end_sample_offset = 1024;
+
+    AudioDriver drv;
+    audrvCreate(&drv, &arconfig, 2);
+    audrvMemPoolAttach(&drv, audrvMemPoolAdd(&drv, AudOutBufferData, (1024 * sizeof(s16) + 0xfff) & ~0xfff));
+    u8 channels[] = { 0, 1 };
+    audrvDeviceSinkAdd(&drv, AUDREN_DEFAULT_DEVICE_NAME, 2, channels);
+    audrvUpdate(&drv);
+
+    audrvVoiceInit(&drv, 0, 1, PcmFormat_Int16, 48000);
+    audrvVoiceSetDestinationMix(&drv, 0, AUDREN_FINAL_MIX_ID);
+    audrvVoiceSetMixFactor(&drv, 0, 1.0f, 0, 0);
+    audrvVoiceSetMixFactor(&drv, 0, 1.0f, 0, 1);
+    audrvVoiceStart(&drv, 0);
+
     EmuDirectory = (char*)"sdmc:/switch/melonds";
     Config::Load();
 
@@ -927,13 +941,6 @@ int main(int argc, char **argv)
         }
     }
 
-    AudOutBufferData = new s16[(1440 * 2 + 0xfff) & ~0xfff];
-    AudOutBuffer.next = NULL;
-    AudOutBuffer.buffer = AudOutBufferData;
-    AudOutBuffer.buffer_size = (1440 * 2 * sizeof(s16) + 0xfff) & ~0xfff;
-    AudOutBuffer.data_size = 1440 * 2 * sizeof(s16);
-    AudOutBuffer.data_offset = 0;
-
     AudInBufferData = new s16[(1440 * 2 + 0xfff) & ~0xfff];
     AudInBuffer.next = NULL;
     AudInBuffer.buffer = AudInBufferData;
@@ -949,6 +956,15 @@ int main(int argc, char **argv)
 
     while (appletMainLoop())
     {
+        // This should be on another thread, but doing so locks up the system??
+        if (wavebuf.state != AudioDriverWaveBufState_Playing)
+        {
+            FillAudioBuffer();
+            audrvVoiceAddWaveBuf(&drv, 0, &wavebuf);
+            audrvVoiceStart(&drv, 0);
+        }
+        audrvUpdate(&drv);
+
         hidScanInput();
         u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
         u32 released = hidKeysUp(CONTROLLER_P1_AUTO);
@@ -1016,5 +1032,7 @@ int main(int argc, char **argv)
 
     DeInitRenderer();
     Pause();
+    audrvClose(&drv);
+    audrenExit();
     return 0;
 }

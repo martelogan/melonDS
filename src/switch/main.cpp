@@ -292,6 +292,10 @@ void DrawStaticUI()
 void OptionsMenu()
 {
     unsigned int selection = 0;
+    bool upheld = false;
+    bool downheld = false;
+    bool scroll = false;
+    chrono::steady_clock::time_point timeheld;
 
     while (true)
     {
@@ -303,6 +307,8 @@ void OptionsMenu()
 
         hidScanInput();
         u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
+        u32 released = hidKeysUp(CONTROLLER_P1_AUTO);
+
         if (pressed & KEY_A)
         {
             if (selection == 2) // Audio volume
@@ -326,10 +332,48 @@ void OptionsMenu()
         else if (pressed & KEY_UP && selection > 0)
         {
             selection--;
+            upheld = true;
+            timeheld = chrono::steady_clock::now();
         }
         else if (pressed & KEY_DOWN && selection < Options.size() - 1)
         {
             selection++;
+            downheld = true;
+            timeheld = chrono::steady_clock::now();
+        }
+
+        if (released & KEY_UP)
+        {
+            upheld = false;
+            scroll = false;
+        }
+        else if (upheld && selection > 0)
+        {
+            chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
+            if (!scroll && elapsed.count() > 0.5f)
+                scroll = true;
+            if (scroll && elapsed.count() > 0.1f)
+            {
+                selection--;
+                timeheld = chrono::steady_clock::now();
+            }
+        }
+
+        if (released & KEY_DOWN)
+        {
+            downheld = false;
+            scroll = false;
+        }
+        else if (downheld && selection < Options.size() - 1)
+        {
+            chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
+            if (!scroll && elapsed.count() > 0.5f)
+                scroll = true;
+            if (scroll && elapsed.count() > 0.1f)
+            {
+                selection++;
+                timeheld = chrono::steady_clock::now();
+            }
         }
 
         for (int i = 0; i < 7; i++)
@@ -371,9 +415,7 @@ void FilesMenu()
 
     while (ROMPath.find(".nds", (ROMPath.length() - 4)) == string::npos)
     {
-        unsigned int selection = 0;
         vector<string> files;
-
         DIR *dir = opendir(ROMPath.c_str());
         dirent *entry;
         while ((entry = readdir(dir)))
@@ -385,6 +427,12 @@ void FilesMenu()
         closedir(dir);
         sort(files.begin(), files.end());
 
+        unsigned int selection = 0;
+        bool upheld = false;
+        bool downheld = false;
+        bool scroll = false;
+        chrono::steady_clock::time_point timeheld;
+
         while (true)
         {
             glClear(GL_COLOR_BUFFER_BIT);
@@ -395,6 +443,8 @@ void FilesMenu()
 
             hidScanInput();
             u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
+            u32 released = hidKeysUp(CONTROLLER_P1_AUTO);
+
             if (pressed & KEY_A && files.size() > 0)
             {
                 ROMPath += "/" + files[selection];
@@ -408,10 +458,14 @@ void FilesMenu()
             else if (pressed & KEY_UP && selection > 0)
             {
                 selection--;
+                upheld = true;
+                timeheld = chrono::steady_clock::now();
             }
             else if (pressed & KEY_DOWN && selection < files.size() - 1)
             {
                 selection++;
+                downheld = true;
+                timeheld = chrono::steady_clock::now();
             }
             else if (pressed & KEY_X)
             {
@@ -422,6 +476,40 @@ void FilesMenu()
             {
                 ROMPath = "";
                 return;
+            }
+
+            if (released & KEY_UP)
+            {
+                upheld = false;
+                scroll = false;
+            }
+            else if (upheld && selection > 0)
+            {
+                chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
+                if (!scroll && elapsed.count() > 0.5f)
+                    scroll = true;
+                if (scroll && elapsed.count() > 0.1f)
+                {
+                    selection--;
+                    timeheld = chrono::steady_clock::now();
+                }
+            }
+
+            if (released & KEY_DOWN)
+            {
+                downheld = false;
+                scroll = false;
+            }
+            else if (downheld && selection < files.size() - 1)
+            {
+                chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
+                if (!scroll && elapsed.count() > 0.5f)
+                    scroll = true;
+                if (scroll && elapsed.count() > 0.1f)
+                {
+                    selection++;
+                    timeheld = chrono::steady_clock::now();
+                }
             }
 
             for (unsigned int i = 0; i < 7; i++)
@@ -808,6 +896,10 @@ void PauseMenu()
     while (Paused)
     {
         unsigned int selection = 0;
+        bool upheld = false;
+        bool downheld = false;
+        bool scroll = false;
+        chrono::steady_clock::time_point timeheld;
 
         while (true)
         {
@@ -824,12 +916,58 @@ void PauseMenu()
 
             hidScanInput();
             u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
+            u32 released = hidKeysUp(CONTROLLER_P1_AUTO);
+
             if (pressed & KEY_A)
+            {
                 break;
+            }
             else if (pressed & KEY_UP && selection > 0)
+            {
                 selection--;
+                upheld = true;
+                timeheld = chrono::steady_clock::now();
+            }
             else if (pressed & KEY_DOWN && selection < items.size() - 1)
+            {
                 selection++;
+                downheld = true;
+                timeheld = chrono::steady_clock::now();
+            }
+
+            if (released & KEY_UP)
+            {
+                upheld = false;
+                scroll = false;
+            }
+            else if (upheld && selection > 0)
+            {
+                chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
+                if (!scroll && elapsed.count() > 0.5f)
+                    scroll = true;
+                if (scroll && elapsed.count() > 0.1f)
+                {
+                    selection--;
+                    timeheld = chrono::steady_clock::now();
+                }
+            }
+
+            if (released & KEY_DOWN)
+            {
+                downheld = false;
+                scroll = false;
+            }
+            else if (downheld && selection < items.size() - 1)
+            {
+                chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
+                if (!scroll && elapsed.count() > 0.5f)
+                    scroll = true;
+                if (scroll && elapsed.count() > 0.1f)
+                {
+                    selection++;
+                    timeheld = chrono::steady_clock::now();
+                }
+            }
         }
 
         if (selection == 0) // Resume

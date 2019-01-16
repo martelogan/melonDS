@@ -181,6 +181,7 @@ void InitRenderer()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     glUseProgram(Program);
 }
@@ -205,6 +206,7 @@ unsigned char *TexFromBMP(string filename)
 {
     FILE *bmp = melon_fopen(filename.c_str(), "rb");
 
+    // Deal with the file header
     unsigned char header[54];
     fread(header, sizeof(unsigned char), 54, bmp);
     int width = *(int*)&header[18];
@@ -223,20 +225,7 @@ void DrawString(string str, float x, float y, int size, bool color, bool fromrig
     for (unsigned int i = 0; i < str.size(); i++)
         width += CharWidth[str[i] - 32];
 
-    // Texture dimensions must be divisible by 4
-    int extra = 0;
-    while (width % 4 != 0)
-    {
-        width++;
-        extra++;
-    }
-
-    unsigned char *font;
-    if (color)
-        font = FontColor;
-    else
-        font = Font;
-
+    unsigned char *font = color ? FontColor : Font;
     unsigned char *tex = new unsigned char[width * 48 * 3];
     int currentx = 0;
 
@@ -250,18 +239,14 @@ void DrawString(string str, float x, float y, int size, bool color, bool fromrig
             row--;
         }
 
-        int cwidth = CharWidth[str[i] - 32];
-        if (i == str.size() - 1)
-            cwidth += extra;
-
         for (int j = 0; j < 48; j++)
-            memcpy(&tex[(j * width + currentx) * 3], &font[((row * 512 + col) * 48 + (j + 32) * 512) * 3], cwidth * 3);
+            memcpy(&tex[(j * width + currentx) * 3], &font[((row * 512 + col) * 48 + (j + 32) * 512) * 3], CharWidth[str[i] - 32] * 3);
 
-        currentx += cwidth;
+        currentx += CharWidth[str[i] - 32];
     }
 
     if (fromright)
-        x -= (width - extra) * size / 48;
+        x -= width * size / 48;
 
     Vertex string[] =
     {
@@ -288,19 +273,9 @@ void DrawLine(float x1, float y1, float x2, float y2, bool color)
 
     unsigned char tex[3];
     if (MenuTheme == ColorSetId_Light)
-    {
-        if (color)
-            memset(tex, 205, 3);
-        else
-            memset(tex, 45, 3);
-    }
+        memset(tex, color ? 205 : 45, sizeof(tex));
     else
-    {
-        if (color)
-            memset(tex, 77, 3);
-        else
-            memset(tex, 255, 3);
-    }
+        memset(tex, color ? 77 : 255, sizeof(tex));
 
     glBufferData(GL_ARRAY_BUFFER, sizeof(line), line, GL_DYNAMIC_DRAW);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_BGR, GL_UNSIGNED_BYTE, tex);
@@ -330,7 +305,7 @@ void OptionsMenu()
         u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
         if (pressed & KEY_A)
         {
-            if (selection == 2)
+            if (selection == 2) // Audio volume
             {
                 (*Options[selection].value) += 256 / 4;
                 if (*Options[selection].value > 256)
@@ -368,7 +343,7 @@ void OptionsMenu()
                 row = i + selection - 3;
 
             string currentvalue;
-            if (row == 2)
+            if (row == 2) // Audio volume
                 currentvalue = Options[row].entries[*Options[row].value * 4 / 256];
             else
                 currentvalue = Options[row].entries[*Options[row].value];
@@ -491,12 +466,12 @@ void SetScreenLayout()
     int gapsizes[] = { 0, 1, 8, 64, 90, 128 };
     gap = gapsizes[Config::ScreenGap];
 
-    if (Config::ScreenLayout == 0)
+    if (Config::ScreenLayout == 0) // Natural, choose based on rotation
         Config::ScreenLayout = (Config::ScreenRotation % 2 == 0) ? 1 : 2;
 
-    if (Config::ScreenLayout == 1)
+    if (Config::ScreenLayout == 1) // Vertical
     {
-        if (Config::ScreenSizing == 0)
+        if (Config::ScreenSizing == 0) // Even
         {
             height_top = height_bot = 360 - gap / 2;
             if (Config::ScreenRotation % 2 == 0)
@@ -504,7 +479,7 @@ void SetScreenLayout()
             else
                 width_top = width_bot = height_top * 3 / 4;
         }
-        else if (Config::ScreenSizing == 1)
+        else if (Config::ScreenSizing == 1) // Emphasize top
         {
             if (Config::ScreenRotation % 2 == 0)
             {
@@ -521,7 +496,7 @@ void SetScreenLayout()
                 width_top = height_top * 3 / 4;
             }
         }
-        else
+        else // Emphasize bottom
         {
             if (Config::ScreenRotation % 2 == 0)
             {
@@ -544,7 +519,7 @@ void SetScreenLayout()
         offsetY_top = 0;
         offsetY_bot = 720 - height_bot;
     }
-    else
+    else // Horizontal
     {
         if (Config::ScreenRotation % 2 == 0)
         {
@@ -563,7 +538,7 @@ void SetScreenLayout()
 
         offsetY_top = offsetY_bot = 360 - height_top / 2;
 
-        if (Config::ScreenSizing == 1)
+        if (Config::ScreenSizing == 1) // Emphasize top
         {
             if (Config::ScreenRotation % 2 == 0)
             {
@@ -587,7 +562,7 @@ void SetScreenLayout()
                 offsetY_bot = 720 - height_bot;
             }
         }
-        else if (Config::ScreenSizing == 2)
+        else if (Config::ScreenSizing == 2) // Emphasize bottom
         {
             if (Config::ScreenRotation % 2 == 0)
             {
@@ -626,6 +601,7 @@ void SetScreenLayout()
         { { offsetX_bot + width_bot, offsetY_bot              }, { 1.0f, 0.0f } }
     };
 
+    // Swap top and bottom screens for 90 and 180 degrees
     if (Config::ScreenRotation == 1 || Config::ScreenRotation == 2)
     {
         Vertex *copy = new Vertex[sizeof(screens) / sizeof(Vertex)];
@@ -672,7 +648,7 @@ void RunCore(void *args)
         chrono::steady_clock::time_point start = chrono::steady_clock::now();
 
         NDS::RunFrame();
-        memcpy(DisplayBuffer, GPU::Framebuffer, 256 * 384 * 4);
+        memcpy(DisplayBuffer, GPU::Framebuffer, sizeof(GPU::Framebuffer));
 
         chrono::duration<double> elapsed = chrono::steady_clock::now() - start;
         if (Config::LimitFPS && elapsed.count() < 1.0f / 60)
@@ -682,8 +658,8 @@ void RunCore(void *args)
 
 void FillAudioBuffer()
 {
-    // 1440 samples seems to be the sweet spot for audout
-    // which is 984 samples at the original sample rate
+    // 1440 samples seems to be the sweet spot for audout,
+    // which is about 984 samples at the original sample rate
 
     s16 buf_in[984 * 2];
     s16 *buf_out = AudOutBufferData;
@@ -856,17 +832,17 @@ void PauseMenu()
                 selection++;
         }
 
-        if (selection == 0)
+        if (selection == 0) // Resume
         {
             StartCore(true);
         }
-        else if (selection == 1)
+        else if (selection == 1) // Open/close lid
         {
             LidClosed = !LidClosed;
             NDS::SetLidClosed(LidClosed);
             StartCore(true);
         }
-        else if (selection == 2 || selection == 3)
+        else if (selection == 2 || selection == 3) // Save/load state
         {
             Savestate* state = new Savestate(const_cast<char*>(StatePath.c_str()), selection == 2);
             if (!state->Error)
@@ -879,11 +855,11 @@ void PauseMenu()
 
             StartCore(true);
         }
-        else if (selection == 4)
+        else if (selection == 4) // Options
         {
             OptionsMenu();
         }
-        else if (selection == 5)
+        else // File browser
         {
             NDS::DeInit();
 

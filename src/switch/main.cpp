@@ -459,10 +459,12 @@ void FilesMenu()
         if (pressed & KEY_A && files.size() > 0)
         {
             ROMPath += "/" + files[selection];
+            selection = 0;
         }
         else if (pressed & KEY_B && ROMPath != "sdmc:/")
         {
             ROMPath = ROMPath.substr(0, ROMPath.rfind("/"));
+            selection = 0;
         }
         else if (pressed & KEY_X)
         {

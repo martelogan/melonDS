@@ -81,7 +81,7 @@ const int CharWidth[] =
 typedef struct
 {
     const char *name;
-    vector<const char*> entries;
+    vector<string> entries;
     int *value;
 } Option;
 
@@ -179,8 +179,6 @@ void InitRenderer()
     glBindTexture(GL_TEXTURE_2D, Texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     glUseProgram(Program);
@@ -282,16 +280,16 @@ void DrawLine(float x1, float y1, float x2, float y2, bool color)
     glDrawArrays(GL_LINES, 0, 2);
 }
 
-void DrawStaticUI()
+void Menu(vector<string> items, vector<string> values, string buttons, unsigned int *selection)
 {
-    DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false, false);
-    DrawLine(30, 88, 1250, 88, false);
-    DrawLine(30, 648, 1250, 648, false);
-}
+    if (MenuTheme == ColorSetId_Light)
+        glClearColor(235.0f / 255, 235.0f / 255, 235.0f / 255, 1.0f);
+    else
+        glClearColor(45.0f / 255, 45.0f / 255, 45.0f / 255, 1.0f);
 
-void OptionsMenu()
-{
-    unsigned int selection = 0;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
     bool upheld = false;
     bool downheld = false;
     bool scroll = false;
@@ -300,14 +298,111 @@ void OptionsMenu()
     while (true)
     {
         glClear(GL_COLOR_BUFFER_BIT);
-
-        DrawStaticUI();
+        DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false, false);
+        DrawLine(30, 88, 1250, 88, false);
+        DrawLine(30, 648, 1250, 648, false);
         DrawLine(90, 124, 1190, 124, true);
-        DrawString(" Back     € OK", 1218, 667, 34, false, true);
+        DrawString(buttons, 1218, 667, 34, false, true);
 
         hidScanInput();
         u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
         u32 released = hidKeysUp(CONTROLLER_P1_AUTO);
+
+        if (pressed & KEY_UP && *selection > 0)
+        {
+            (*selection)--;
+            upheld = true;
+            timeheld = chrono::steady_clock::now();
+        }
+        else if (pressed & KEY_DOWN && *selection < items.size() - 1)
+        {
+            (*selection)++;
+            downheld = true;
+            timeheld = chrono::steady_clock::now();
+        }
+        else if (pressed)
+        {
+            break;
+        }
+
+        if (released & KEY_UP)
+        {
+            upheld = false;
+            scroll = false;
+        }
+        else if (upheld && *selection > 0)
+        {
+            chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
+            if (!scroll && elapsed.count() > 0.5f)
+                scroll = true;
+            if (scroll && elapsed.count() > 0.1f)
+            {
+                (*selection)--;
+                timeheld = chrono::steady_clock::now();
+            }
+        }
+
+        if (released & KEY_DOWN)
+        {
+            downheld = false;
+            scroll = false;
+        }
+        else if (downheld && *selection < items.size() - 1)
+        {
+            chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
+            if (!scroll && elapsed.count() > 0.5f)
+                scroll = true;
+            if (scroll && elapsed.count() > 0.1f)
+            {
+                (*selection)++;
+                timeheld = chrono::steady_clock::now();
+            }
+        }
+
+        for (unsigned int i = 0; i < 7; i++)
+        {
+            if (i < items.size())
+            {
+                unsigned int row;
+                if (*selection < 4 || items.size() <= 7)
+                    row = i;
+                else if (*selection > items.size() - 4)
+                    row = items.size() - 7 + i;
+                else
+                   row = i + *selection - 3;
+
+                DrawString(items[row], 105, 140 + i * 70, 38, row == *selection, false);
+                if (values.size() > row)
+                    DrawString(values[row], 1175, 143 + i * 70, 32, row == *selection, true);
+                DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
+            }
+        }
+
+        eglSwapBuffers(Display, Surface);
+    }
+}
+
+void OptionsMenu()
+{
+    vector<string> items;
+    for (unsigned int i = 0; i < Options.size(); i++)
+        items.push_back(Options[i].name);
+
+    unsigned int selection = 0;
+
+    while (true)
+    {
+        vector<string> values;
+        for (unsigned int i = 0; i < Options.size(); i++)
+        {
+            if (i == 2) // Audio volume
+                values.push_back(Options[i].entries[*Options[i].value * 4 / 256]);
+            else
+                values.push_back(Options[i].entries[*Options[i].value]);
+        }
+
+        Menu(items, values, " Back     € OK", &selection);
+        u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
 
         if (pressed & KEY_A)
         {
@@ -329,89 +424,17 @@ void OptionsMenu()
             Config::Save();
             break;
         }
-        else if (pressed & KEY_UP && selection > 0)
-        {
-            selection--;
-            upheld = true;
-            timeheld = chrono::steady_clock::now();
-        }
-        else if (pressed & KEY_DOWN && selection < Options.size() - 1)
-        {
-            selection++;
-            downheld = true;
-            timeheld = chrono::steady_clock::now();
-        }
-
-        if (released & KEY_UP)
-        {
-            upheld = false;
-            scroll = false;
-        }
-        else if (upheld && selection > 0)
-        {
-            chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
-            if (!scroll && elapsed.count() > 0.5f)
-                scroll = true;
-            if (scroll && elapsed.count() > 0.1f)
-            {
-                selection--;
-                timeheld = chrono::steady_clock::now();
-            }
-        }
-
-        if (released & KEY_DOWN)
-        {
-            downheld = false;
-            scroll = false;
-        }
-        else if (downheld && selection < Options.size() - 1)
-        {
-            chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
-            if (!scroll && elapsed.count() > 0.5f)
-                scroll = true;
-            if (scroll && elapsed.count() > 0.1f)
-            {
-                selection++;
-                timeheld = chrono::steady_clock::now();
-            }
-        }
-
-        for (int i = 0; i < 7; i++)
-        {
-            unsigned int row;
-            if (selection < 4)
-                row = i;
-            else if (selection > Options.size() - 4)
-                row = Options.size() - 7 + i;
-            else
-                row = i + selection - 3;
-
-            string currentvalue;
-            if (row == 2) // Audio volume
-                currentvalue = Options[row].entries[*Options[row].value * 4 / 256];
-            else
-                currentvalue = Options[row].entries[*Options[row].value];
-
-            DrawString(Options[row].name, 105, 140 + i * 70, 38, row == selection, false);
-            DrawString(currentvalue, 1175, 143 + i * 70, 32, row == selection, true);
-            DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
-        }
-
-        eglSwapBuffers(Display, Surface);
     }
 }
 
 void FilesMenu()
 {
-    if (MenuTheme == ColorSetId_Light)
-        glClearColor(235.0f / 255, 235.0f / 255, 235.0f / 255, 1.0f);
-    else
-        glClearColor(45.0f / 255, 45.0f / 255, 45.0f / 255, 1.0f);
-
     if (strcmp(Config::LastROMFolder, "") == 0)
         ROMPath = "sdmc:/";
     else
         ROMPath = Config::LastROMFolder;
+
+    unsigned int selection = 0;
 
     while (ROMPath.find(".nds", (ROMPath.length() - 4)) == string::npos)
     {
@@ -427,109 +450,25 @@ void FilesMenu()
         closedir(dir);
         sort(files.begin(), files.end());
 
-        unsigned int selection = 0;
-        bool upheld = false;
-        bool downheld = false;
-        bool scroll = false;
-        chrono::steady_clock::time_point timeheld;
+        Menu(files, vector<string>(), "ƒ Exit     ‚ Options      Back     € OK", &selection);
+        u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
 
-        while (true)
+        if (pressed & KEY_A && files.size() > 0)
         {
-            glClear(GL_COLOR_BUFFER_BIT);
-
-            DrawStaticUI();
-            DrawLine(90, 124, 1190, 124, true);
-            DrawString("ƒ Exit     ‚ Options      Back     € OK", 1218, 667, 34, false, true);
-
-            hidScanInput();
-            u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
-            u32 released = hidKeysUp(CONTROLLER_P1_AUTO);
-
-            if (pressed & KEY_A && files.size() > 0)
-            {
-                ROMPath += "/" + files[selection];
-                break;
-            }
-            else if (pressed & KEY_B && ROMPath != "sdmc:/")
-            {
-                ROMPath = ROMPath.substr(0, ROMPath.rfind("/"));
-                break;
-            }
-            else if (pressed & KEY_UP && selection > 0)
-            {
-                selection--;
-                upheld = true;
-                timeheld = chrono::steady_clock::now();
-            }
-            else if (pressed & KEY_DOWN && selection < files.size() - 1)
-            {
-                selection++;
-                downheld = true;
-                timeheld = chrono::steady_clock::now();
-            }
-            else if (pressed & KEY_X)
-            {
-                OptionsMenu();
-                selection = 0;
-            }
-            else if (pressed & KEY_PLUS)
-            {
-                ROMPath = "";
-                return;
-            }
-
-            if (released & KEY_UP)
-            {
-                upheld = false;
-                scroll = false;
-            }
-            else if (upheld && selection > 0)
-            {
-                chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
-                if (!scroll && elapsed.count() > 0.5f)
-                    scroll = true;
-                if (scroll && elapsed.count() > 0.1f)
-                {
-                    selection--;
-                    timeheld = chrono::steady_clock::now();
-                }
-            }
-
-            if (released & KEY_DOWN)
-            {
-                downheld = false;
-                scroll = false;
-            }
-            else if (downheld && selection < files.size() - 1)
-            {
-                chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
-                if (!scroll && elapsed.count() > 0.5f)
-                    scroll = true;
-                if (scroll && elapsed.count() > 0.1f)
-                {
-                    selection++;
-                    timeheld = chrono::steady_clock::now();
-                }
-            }
-
-            for (unsigned int i = 0; i < 7; i++)
-            {
-                if (i < files.size())
-                {
-                    unsigned int row;
-                    if (selection < 4 || files.size() <= 7)
-                        row = i;
-                    else if (selection > files.size() - 4)
-                        row = files.size() - 7 + i;
-                    else
-                       row = i + selection - 3;
-
-                    DrawString(files[row], 105, 140 + i * 70, 38, row == selection, false);
-                    DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
-                }
-            }
-
-            eglSwapBuffers(Display, Surface);
+            ROMPath += "/" + files[selection];
+        }
+        else if (pressed & KEY_B && ROMPath != "sdmc:/")
+        {
+            ROMPath = ROMPath.substr(0, ROMPath.rfind("/"));
+        }
+        else if (pressed & KEY_X)
+        {
+            OptionsMenu();
+        }
+        else if (pressed & KEY_PLUS)
+        {
+            ROMPath = "";
+            return;
         }
     }
 
@@ -875,15 +814,7 @@ void PauseMenu()
 {
     Pause();
 
-    if (MenuTheme == ColorSetId_Light)
-        glClearColor(235.0f / 255, 235.0f / 255, 235.0f / 255, 1.0f);
-    else
-        glClearColor(45.0f / 255, 45.0f / 255, 45.0f / 255, 1.0f);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    vector<const char*> items = 
+    vector<string> items = 
     {
         "Resume",
         LidClosed ? "Open lid" : "Close lid",
@@ -893,119 +824,52 @@ void PauseMenu()
         "File browser"
     };
 
+    unsigned int selection = 0;
+
     while (Paused)
     {
-        unsigned int selection = 0;
-        bool upheld = false;
-        bool downheld = false;
-        bool scroll = false;
-        chrono::steady_clock::time_point timeheld;
+        Menu(items, vector<string>(), "€ OK", &selection);
+        u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
 
-        while (true)
+        if (pressed & KEY_A)
         {
-            glClear(GL_COLOR_BUFFER_BIT);
-            DrawStaticUI();
-            DrawLine(90, 124, 1190, 124, true);
-            DrawString("€ OK", 1218, 667, 34, false, true);
-            for (unsigned int i = 0; i < items.size(); i++)
+            if (selection == 0) // Resume
             {
-                DrawString(items[i], 105, 140 + i * 70, 38, i == selection, false);
-                DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
+                StartCore(true);
             }
-            eglSwapBuffers(Display, Surface);
-
-            hidScanInput();
-            u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
-            u32 released = hidKeysUp(CONTROLLER_P1_AUTO);
-
-            if (pressed & KEY_A)
+            else if (selection == 1) // Open/close lid
             {
-                break;
+                LidClosed = !LidClosed;
+                NDS::SetLidClosed(LidClosed);
+                StartCore(true);
             }
-            else if (pressed & KEY_UP && selection > 0)
+            else if (selection == 2 || selection == 3) // Save/load state
             {
-                selection--;
-                upheld = true;
-                timeheld = chrono::steady_clock::now();
-            }
-            else if (pressed & KEY_DOWN && selection < items.size() - 1)
-            {
-                selection++;
-                downheld = true;
-                timeheld = chrono::steady_clock::now();
-            }
-
-            if (released & KEY_UP)
-            {
-                upheld = false;
-                scroll = false;
-            }
-            else if (upheld && selection > 0)
-            {
-                chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
-                if (!scroll && elapsed.count() > 0.5f)
-                    scroll = true;
-                if (scroll && elapsed.count() > 0.1f)
+                Savestate *state = new Savestate(const_cast<char*>(StatePath.c_str()), selection == 2);
+                if (!state->Error)
                 {
-                    selection--;
-                    timeheld = chrono::steady_clock::now();
+                    NDS::DoSavestate(state);
+                    if (Config::SavestateRelocSRAM)
+                        NDS::RelocateSave(const_cast<char*>(StateSRAMPath.c_str()), selection == 2);
                 }
-            }
+                delete state;
 
-            if (released & KEY_DOWN)
+                StartCore(true);
+            }
+            else if (selection == 4) // Options
             {
-                downheld = false;
-                scroll = false;
+                OptionsMenu();
             }
-            else if (downheld && selection < items.size() - 1)
+            else // File browser
             {
-                chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
-                if (!scroll && elapsed.count() > 0.5f)
-                    scroll = true;
-                if (scroll && elapsed.count() > 0.1f)
-                {
-                    selection++;
-                    timeheld = chrono::steady_clock::now();
-                }
+                NDS::DeInit();
+
+                FilesMenu();
+                if (ROMPath == "")
+                    break;
+
+                StartCore(false);
             }
-        }
-
-        if (selection == 0) // Resume
-        {
-            StartCore(true);
-        }
-        else if (selection == 1) // Open/close lid
-        {
-            LidClosed = !LidClosed;
-            NDS::SetLidClosed(LidClosed);
-            StartCore(true);
-        }
-        else if (selection == 2 || selection == 3) // Save/load state
-        {
-            Savestate* state = new Savestate(const_cast<char*>(StatePath.c_str()), selection == 2);
-            if (!state->Error)
-            {
-                NDS::DoSavestate(state);
-                if (Config::SavestateRelocSRAM)
-                    NDS::RelocateSave(const_cast<char*>(StateSRAMPath.c_str()), selection == 2);
-            }
-            delete state;
-
-            StartCore(true);
-        }
-        else if (selection == 4) // Options
-        {
-            OptionsMenu();
-        }
-        else // File browser
-        {
-            NDS::DeInit();
-
-            FilesMenu();
-            if (ROMPath == "")
-                break;
-
-            StartCore(false);
         }
     }
 }
@@ -1044,7 +908,9 @@ int main(int argc, char **argv)
     if (!LocalFileExists("bios7.bin") || !LocalFileExists("bios9.bin") || !LocalFileExists("firmware.bin"))
     {
         glClear(GL_COLOR_BUFFER_BIT);
-        DrawStaticUI();
+        DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false, false);
+        DrawLine(30, 88, 1250, 88, false);
+        DrawLine(30, 648, 1250, 648, false);
         DrawString("ƒ Exit", 1218, 667, 34, false, true);
         DrawString("One or more of the following required files don't exist or couldn't be accessed:", 90, 124, 38, false, false);
         DrawString("bios7.bin -- ARM7 BIOS", 90, 124 + 38, 38, false, false);

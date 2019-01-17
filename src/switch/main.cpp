@@ -49,6 +49,7 @@ unsigned char *Font, *FontColor;
 char *EmuDirectory;
 string ROMPath, SRAMPath, StatePath, StateSRAMPath;
 
+int SamplesOut;
 s16 *AudOutBufferData, *AudInBufferData;
 AudioOutBuffer AudOutBuffer, *RelOutBuffer;
 AudioInBuffer AudInBuffer, *RelInBuffer;
@@ -61,6 +62,8 @@ EGLDisplay Display;
 EGLContext Context;
 EGLSurface Surface;
 GLuint Program, VertArrayObj, VertBufferObj, Texture;
+
+AppletHookCookie HookCookie;
 
 const int ClockSpeeds[] = { 1020000000, 1224000000, 1581000000, 1785000000 };
 
@@ -683,35 +686,52 @@ void RunCore(void *args)
     }
 }
 
+void SetupAudioBuffer()
+{
+    // Dynamically switch audio sample rate when the system is docked/undocked
+    // For some reason both modes act differently with different sample rates
+    if (appletGetOperationMode() == AppletOperationMode_Handheld)
+        SamplesOut = 1440;
+    else
+        SamplesOut = 2048;
+
+    AudOutBufferData = new s16[(SamplesOut * 2 + 0xfff) & ~0xfff];
+    AudOutBuffer.next = NULL;
+    AudOutBuffer.buffer = AudOutBufferData;
+    AudOutBuffer.buffer_size = (SamplesOut * sizeof(s16) * 2 + 0xfff) & ~0xfff;
+    AudOutBuffer.data_size = SamplesOut * sizeof(s16) * 2;
+    AudOutBuffer.data_offset = 0;
+}
+
 void FillAudioBuffer()
 {
-    // 1440 samples seems to be the sweet spot for audout,
-    // which is about 984 samples at the original sample rate
+    // Approximate the equivalent sample count at the original rate
+    int samples_in = SamplesOut * 700 / 1024;
 
-    s16 buf_in[984 * 2];
+    s16 buf_in[samples_in * 2];
     s16 *buf_out = AudOutBufferData;
 
-    int num_in = SPU::ReadOutput(buf_in, 984);
-    int num_out = 1440;
+    int num_in = SPU::ReadOutput(buf_in, samples_in);
+    int num_out = SamplesOut;
 
     int margin = 6;
-    if (num_in < 984 - margin)
+    if (num_in < samples_in - margin)
     {
         int last = num_in - 1;
         if (last < 0)
             last = 0;
 
-        for (int i = num_in; i < 984 - margin; i++)
+        for (int i = num_in; i < samples_in - margin; i++)
             ((u32*)buf_in)[i] = ((u32*)buf_in)[last];
 
-        num_in = 984 - margin;
+        num_in = samples_in - margin;
     }
 
     float res_incr = (float)num_in / num_out;
     float res_timer = 0;
     int res_pos = 0;
 
-    for (int i = 0; i < 1440; i++)
+    for (int i = 0; i < SamplesOut; i++)
     {
         buf_out[i * 2] = (buf_in[res_pos * 2] * Config::AudioVolume) >> 8;
         buf_out[i * 2 + 1] = (buf_in[res_pos * 2 + 1] * Config::AudioVolume) >> 8;
@@ -757,13 +777,22 @@ void MicInput(void *args)
     }
 }
 
+void AppletHook(AppletHookType hook, void *param)
+{
+    if (hook == AppletHookType_OnOperationMode || hook == AppletHookType_OnPerformanceMode)
+    {
+        pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[Config::SwitchOverclock]);
+        SetupAudioBuffer();
+    }
+}
+
 void StartCore(bool resume)
 {
-    SRAMPath = ROMPath.substr(0, ROMPath.rfind(".")) + ".sav";
-    StatePath = ROMPath.substr(0, ROMPath.rfind(".")) + ".mln";
-    StateSRAMPath = StatePath + ".sav";
+    SetupAudioBuffer();
+    SetScreenLayout();
 
     appletLockExit();
+    appletHook(&HookCookie, AppletHook, NULL);
     if (Config::AudioVolume > 0)
     {
         audoutInitialize();
@@ -783,11 +812,13 @@ void StartCore(bool resume)
 
     if (!resume)
     {
+        SRAMPath = ROMPath.substr(0, ROMPath.rfind(".")) + ".sav";
+        StatePath = ROMPath.substr(0, ROMPath.rfind(".")) + ".mln";
+        StateSRAMPath = StatePath + ".sav";
+
         NDS::Init();
         NDS::LoadROM(ROMPath.c_str(), SRAMPath.c_str(), Config::DirectBoot);
     }
-
-    SetScreenLayout();
 
     Thread core, audio, mic;
     threadCreate(&core, RunCore, NULL, 0x80000, 0x30, 1);
@@ -807,6 +838,7 @@ void Pause()
     audinExit();
     audoutStopAudioOut();
     audoutExit();
+    appletUnhook(&HookCookie);
     appletUnlockExit();
 }
 
@@ -930,13 +962,6 @@ int main(int argc, char **argv)
             }
         }
     }
-
-    AudOutBufferData = new s16[(1440 * 2 + 0xfff) & ~0xfff];
-    AudOutBuffer.next = NULL;
-    AudOutBuffer.buffer = AudOutBufferData;
-    AudOutBuffer.buffer_size = (1440 * 2 * sizeof(s16) + 0xfff) & ~0xfff;
-    AudOutBuffer.data_size = 1440 * 2 * sizeof(s16);
-    AudOutBuffer.data_offset = 0;
 
     AudInBufferData = new s16[(1440 * 2 + 0xfff) & ~0xfff];
     AudInBuffer.next = NULL;

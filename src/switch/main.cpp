@@ -44,7 +44,7 @@
 using namespace std;
 
 ColorSetId MenuTheme;
-unsigned char *Font, *FontColor;
+u8 *Font, *FontColor;
 
 char *EmuDirectory;
 string ROMPath, SRAMPath, StatePath, StateSRAMPath;
@@ -203,18 +203,18 @@ void DeInitRenderer()
     Display = NULL;
 }
 
-unsigned char *TexFromBMP(string filename)
+u8 *TexFromBMP(string filename)
 {
     FILE *bmp = melon_fopen(filename.c_str(), "rb");
 
     // Deal with the file header
-    unsigned char header[54];
-    fread(header, sizeof(unsigned char), 54, bmp);
+    u8 header[54];
+    fread(header, sizeof(u8), 54, bmp);
     int width = *(int*)&header[18];
     int height = *(int*)&header[22];
 
-    unsigned char *data = new unsigned char[width * height * 3];
-    fread(data, sizeof(unsigned char), width * height * 3, bmp);
+    u8 *data = new u8[width * height * 3];
+    fread(data, sizeof(u8), width * height * 3, bmp);
 
     fclose(bmp);
     return data;
@@ -226,8 +226,8 @@ void DrawString(string str, float x, float y, int size, bool color, bool fromrig
     for (unsigned int i = 0; i < str.size(); i++)
         width += CharWidth[str[i] - 32];
 
-    unsigned char *font = color ? FontColor : Font;
-    unsigned char *tex = new unsigned char[width * 48 * 3];
+    u8 *font = color ? FontColor : Font;
+    u8 *tex = new u8[width * 48 * 3];
     int currentx = 0;
 
     for (unsigned int i = 0; i < str.size(); i++)
@@ -272,7 +272,7 @@ void DrawLine(float x1, float y1, float x2, float y2, bool color)
         { { x2, y2 }, { 0.0f, 0.0f } }
     };
 
-    unsigned char tex[3];
+    u8 tex[3];
     if (MenuTheme == ColorSetId_Light)
         memset(tex, color ? 205 : 45, sizeof(tex));
     else
@@ -281,6 +281,58 @@ void DrawLine(float x1, float y1, float x2, float y2, bool color)
     glBufferData(GL_ARRAY_BUFFER, sizeof(line), line, GL_DYNAMIC_DRAW);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_BGR, GL_UNSIGNED_BYTE, tex);
     glDrawArrays(GL_LINES, 0, 2);
+}
+
+void DrawIcon(string filename, float x, float y)
+{
+    FILE *rom = melon_fopen(filename.c_str(), "rb");
+
+    u32 offset;
+    fseek(rom, 0x68, SEEK_SET);
+    fread(&offset, sizeof(u32), 1, rom);
+
+    u8 data[512];
+    fseek(rom, 0x20 + offset, SEEK_SET);
+    fread(data, sizeof(u8), 512, rom);
+
+    u16 palette[16];
+    fseek(rom, 0x220 + offset, SEEK_SET);
+    fread(palette, sizeof(u16), 16, rom);
+
+    fclose(rom);
+
+    u8 indexes[1024];
+    for (int i = 0; i < 512; i++)
+    {
+        indexes[i * 2] = data[i] << 4;
+        indexes[i * 2 + 1] = data[i];
+    }
+
+    u8 tiles[32 * 32 * 3];
+    for (int i = 0; i < 1024; i++)
+    {
+        tiles[i * 3] = ((palette[indexes[i] / 16] >> 10) & 0x1f) * 255 / 31;
+        tiles[i * 3 + 1] = ((palette[indexes[i] / 16] >> 5) & 0x1f) * 255 / 31;
+        tiles[i * 3 + 2] = (palette[indexes[i] / 16] & 0x1f) * 255 / 31;
+    }
+
+    u8 tex[32 * 32 * 3];
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 8; j++)
+            for (int k = 0; k < 4; k++)
+                memcpy(&tex[(256 * i + 32 * j + 8 * k) * 3], &tiles[(256 * i + 8 * j + 64 * k) * 3], 8 * 3);
+
+    Vertex icon[] =
+    {
+        { { x + 64, y + 64 }, { 1.0f, 1.0f } },
+        { { x,      y + 64 }, { 0.0f, 1.0f } },
+        { { x,      y      }, { 0.0f, 0.0f } },
+        { { x + 64, y      }, { 1.0f, 0.0f } }
+    };
+
+    glBufferData(GL_ARRAY_BUFFER, sizeof(icon), icon, GL_DYNAMIC_DRAW);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 32, 32, 0, GL_BGR, GL_UNSIGNED_BYTE, tex);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
 void Menu(vector<string> items, vector<string> values, string buttons, unsigned int *selection)
@@ -378,6 +430,8 @@ void Menu(vector<string> items, vector<string> values, string buttons, unsigned 
                 if (values.size() > row)
                     DrawString(values[row], 1175, 143 + i * 70, 32, row == *selection, true);
                 DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
+                if (items[row].find(".nds", items[row].length() - 4) != string::npos)
+                    DrawIcon(ROMPath + "/" + items[row], 13, 127 + i * 70);
             }
         }
 
@@ -439,7 +493,7 @@ void FilesMenu()
 
     unsigned int selection = 0;
 
-    while (ROMPath.find(".nds", (ROMPath.length() - 4)) == string::npos)
+    while (ROMPath.find(".nds", ROMPath.length() - 4) == string::npos)
     {
         vector<string> files;
         DIR *dir = opendir(ROMPath.c_str());

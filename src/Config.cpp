@@ -78,7 +78,6 @@ typedef struct
 
 ConfigEntry ConfigFile[] =
 {
-#ifndef __SWITCH__
     {"Key_A",      0, &KeyMapping[0],   32, NULL, 0},
     {"Key_B",      0, &KeyMapping[1],   31, NULL, 0},
     {"Key_Select", 0, &KeyMapping[2],   57, NULL, 0},
@@ -108,13 +107,13 @@ ConfigEntry ConfigFile[] =
     {"HKKey_Lid",  0, &HKKeyMapping[HK_Lid], 0x0E, NULL, 0},
     {"HKKey_Mic",  0, &HKKeyMapping[HK_Mic], 0x35, NULL, 0},
 
-    {"HKJoy_Lid",  0, &HKJoyMapping[HK_Lid], -1, NULL, 0},
-    {"HKJoy_Mic",  0, &HKJoyMapping[HK_Mic], -1, NULL, 0},
+    {"HKJoy_Lid",  0, &HKJoyMapping[HK_Lid],  -1, NULL, 0},
+    {"HKJoy_Mic",  0, &HKJoyMapping[HK_Mic],  -1, NULL, 0},
+    {"HKJoy_Menu", 0, &HKJoyMapping[HK_Menu], -1, NULL, 0},
 
     {"WindowWidth",  0, &WindowWidth,  256, NULL, 0},
     {"WindowHeight", 0, &WindowHeight, 384, NULL, 0},
     {"WindowMax", 0, &WindowMaximized, 0, NULL, 0},
-#endif
 
     {"ScreenRotation", 0, &ScreenRotation, 0, NULL, 0},
     {"ScreenGap",      0, &ScreenGap,      0, NULL, 0},
@@ -128,23 +127,17 @@ ConfigEntry ConfigFile[] =
 
     {"Threaded3D", 0, &Threaded3D, 1, NULL, 0},
 
-#ifndef __SWITCH__
     {"SockBindAnyAddr", 0, &SocketBindAnyAddr, 0, NULL, 0},
-#endif
 
     {"SavStaRelocSRAM", 0, &SavestateRelocSRAM, 0, NULL, 0},
 
     {"AudioVolume", 0, &AudioVolume, 256, NULL, 0},
     {"MicInputType", 0, &MicInputType, 1, NULL, 0},
-#ifndef __SWITCH__
     {"MicWavPath", 1, MicWavPath, 0, "", 511},
-#endif
 
     {"LastROMFolder", 1, LastROMFolder, 0, "", 511},
 
-#ifdef __SWITCH__
     {"SwitchOverclock", 0, &SwitchOverclock, 0, NULL, 0},
-#endif
 
     {"", -1, NULL, 0, NULL, 0}
 };

@@ -25,6 +25,7 @@ enum
 {
     HK_Lid = 0,
     HK_Mic,
+    HK_Menu,
 
     HK_MAX
 };

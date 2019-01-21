@@ -51,6 +51,7 @@ string ROMPath, SRAMPath, StatePath, StateSRAMPath;
 vector<string> Files;
 
 int SamplesOut;
+bool MicOutput;
 s16 *AudOutBufferData, *AudInBufferData;
 AudioOutBuffer AudOutBuffer, *RelOutBuffer;
 AudioInBuffer AudInBuffer, *RelInBuffer;
@@ -87,9 +88,42 @@ typedef struct
     const char *name;
     vector<string> entries;
     int *value;
-} Option;
+} Setting;
 
-const vector<Option> Options =
+const vector<string> ControlEntries =
+{
+    "Default",
+    "A button", "B button", "X button", "Y button",
+    "Left stick click", "Right stick click",
+    "L button", "R button", "ZL button", "ZR button",
+    "Plus button", "Minus button",
+    "D-pad left", "D-pad up", "D-pad right", "D-pad down",
+    "Left stick left", "Left stick up", "Left stick right", "Left stick down",
+    "Right stick left", "Right stick up", "Right stick right", "Right stick down",
+    "Left Joy-Con SL", "Left Joy-Con SR", "Right Joy-Con SL", "Right Joy-Con SR"
+};
+
+const vector<Setting> Controls =
+{
+    { "A button",          ControlEntries, &Config::JoyMapping[0]         },
+    { "B button",          ControlEntries, &Config::JoyMapping[1]         },
+    { "Select button",     ControlEntries, &Config::JoyMapping[2]         },
+    { "Start button",      ControlEntries, &Config::JoyMapping[3]         },
+    { "D-pad right",       ControlEntries, &Config::JoyMapping[4]         },
+    { "D-pad left",        ControlEntries, &Config::JoyMapping[5]         },
+    { "D-pad up",          ControlEntries, &Config::JoyMapping[6]         },
+    { "D-pad down",        ControlEntries, &Config::JoyMapping[7]         },
+    { "R button",          ControlEntries, &Config::JoyMapping[8]         },
+    { "L button",          ControlEntries, &Config::JoyMapping[9]         },
+    { "X button",          ControlEntries, &Config::JoyMapping[10]        },
+    { "Y button",          ControlEntries, &Config::JoyMapping[11]        },
+    { "Close/open lid",    ControlEntries, &Config::HKJoyMapping[HK_Lid]  },
+    { "Microphone",        ControlEntries, &Config::HKJoyMapping[HK_Mic]  },
+    { "Pause menu",        ControlEntries, &Config::HKJoyMapping[HK_Menu] },
+    { "Reset to defaults", {},             NULL                           }
+};
+
+const vector<Setting> Settings =
 {
     { "Boot game directly",                 { "Off", "On" },                                                               &Config::DirectBoot },
     { "Threaded 3D renderer",               { "Off", "On" },                                                               &Config::Threaded3D },
@@ -105,13 +139,12 @@ const vector<Option> Options =
     { "Switch overclock",                   { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" },                            &Config::SwitchOverclock }
 };
 
-vector<string> PauseMenuItems =
+const vector<string> PauseMenuItems =
 {
     "Resume",
-    "Close lid",
     "Save state",
     "Load state",
-    "Options",
+    "Settings",
     "File browser"
 };
 
@@ -356,7 +389,7 @@ void DrawIcon(u8 *tex, float x, float y, int size)
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
-void Menu(string buttons, unsigned int rowcount, bool (*buttonactions)(u32, unsigned int), void (*drawrow)(unsigned int, unsigned int, unsigned int))
+void Menu(string title, string buttons, unsigned int rowcount, bool (*buttonactions)(u32, unsigned int), void (*drawrow)(unsigned int, unsigned int, unsigned int))
 {
     float clearcolor = ((MenuTheme == ColorSetId_Light) ? 235.0f : 45.0f) / 255;
     glClearColor(clearcolor, clearcolor, clearcolor, 1.0f);
@@ -373,7 +406,7 @@ void Menu(string buttons, unsigned int rowcount, bool (*buttonactions)(u32, unsi
     while (true)
     {
         glClear(GL_COLOR_BUFFER_BIT);
-        DrawString("melonDS " MELONDS_VERSION, 72, 30, 42, false, false);
+        DrawString(title, 72, 30, 42, false, false);
         DrawLine(30, 88, 1250, 88, false);
         DrawLine(30, 648, 1250, 648, false);
         DrawLine(90, 124, 1190, 124, true);
@@ -442,21 +475,66 @@ void Menu(string buttons, unsigned int rowcount, bool (*buttonactions)(u32, unsi
     }
 }
 
-bool OptionsButtonActions(u32 pressed, unsigned int selection)
+bool ControlsButtonActions(u32 pressed, unsigned int selection)
+{
+    if (pressed & KEY_A)
+    {
+        if (selection == 15) // Reset to defaults
+        {
+            for (unsigned int i = 0; i < Controls.size() - 1; i++)
+                *Controls[i].value = -1;
+        }
+        else
+        {
+            pressed = 0;
+            while (!pressed)
+            {
+                hidScanInput();
+                pressed = hidKeysDown(CONTROLLER_P1_AUTO);
+            }
+
+            for (unsigned int i = 0; i < ControlEntries.size(); i++)
+            {
+                if (pressed & BIT(i))
+                    *Controls[selection].value = i;
+            }
+        }
+    }
+    else if (pressed & KEY_B)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+void ControlsDrawRow(unsigned int i, unsigned int row, unsigned int selection)
+{
+    DrawString(Controls[row].name, 105, 140 + i * 70, 38, row == selection, false);
+    if (row != 15) // Reset to defaults
+        DrawString(Controls[row].entries[*Controls[row].value + 1], 1175, 143 + i * 70, 32, row == selection, true);
+}
+
+void ControlsMenu()
+{
+    Menu("Controls", "Å Back     Ä OK", Controls.size(), ControlsButtonActions, ControlsDrawRow);
+}
+
+bool SettingsButtonActions(u32 pressed, unsigned int selection)
 {
     if (pressed & KEY_A)
     {
         if (selection == 2) // Audio volume
         {
-            (*Options[selection].value) += 256 / 4;
-            if (*Options[selection].value > 256)
-                *Options[selection].value = 0;
+            (*Settings[selection].value) += 256 / 4;
+            if (*Settings[selection].value > 256)
+                *Settings[selection].value = 0;
         }
         else
         {
-            (*Options[selection].value)++;
-            if (*Options[selection].value >= (int)Options[selection].entries.size())
-                *Options[selection].value = 0;
+            (*Settings[selection].value)++;
+            if (*Settings[selection].value >= (int)Settings[selection].entries.size())
+                *Settings[selection].value = 0;
         }
     }
     else if (pressed & KEY_B)
@@ -464,22 +542,26 @@ bool OptionsButtonActions(u32 pressed, unsigned int selection)
         Config::Save();
         return true;
     }
+    else if (pressed & KEY_X)
+    {
+        ControlsMenu();
+    }
 
     return false;
 }
 
-void OptionsDrawRow(unsigned int i, unsigned int row, unsigned int selection)
+void SettingsDrawRow(unsigned int i, unsigned int row, unsigned int selection)
 {
-    DrawString(Options[row].name, 105, 140 + i * 70, 38, row == selection, false);
+    DrawString(Settings[row].name, 105, 140 + i * 70, 38, row == selection, false);
     if (row == 2) // Audio volume
-        DrawString(Options[row].entries[*Options[row].value * 4 / 256], 1175, 143 + i * 70, 32, row == selection, true);
+        DrawString(Settings[row].entries[*Settings[row].value * 4 / 256], 1175, 143 + i * 70, 32, row == selection, true);
     else
-        DrawString(Options[row].entries[*Options[row].value], 1175, 143 + i * 70, 32, row == selection, true);
+        DrawString(Settings[row].entries[*Settings[row].value], 1175, 143 + i * 70, 32, row == selection, true);
 }
 
-void OptionsMenu()
+void SettingsMenu()
 {
-    Menu("Å Back     Ä OK", Options.size(), OptionsButtonActions, OptionsDrawRow);
+    Menu("Settings", "Ç Controls     Å Back     Ä OK", Settings.size(), SettingsButtonActions, SettingsDrawRow);
 }
 
 bool FilesButtonActions(u32 pressed, unsigned int selection)
@@ -498,7 +580,7 @@ bool FilesButtonActions(u32 pressed, unsigned int selection)
     }
     else if (pressed & KEY_X)
     {
-        OptionsMenu();
+        SettingsMenu();
     }
     else if (pressed & KEY_PLUS)
     {
@@ -541,7 +623,7 @@ void FilesMenu()
         closedir(dir);
         sort(Files.begin(), Files.end());
 
-        Menu("É Exit     Ç Options     Å Back     Ä OK", Files.size(), FilesButtonActions, FilesDrawRow);
+        Menu("melonDS " MELONDS_VERSION, "É Exit     Ç Settings     Å Back     Ä OK", Files.size(), FilesButtonActions, FilesDrawRow);
         if (ROMPath == "")
             return;
 
@@ -818,6 +900,9 @@ void MicInput(void *args)
 {
     while (!Paused)
     {
+        if (!MicOutput)
+            continue;
+
         if (Config::MicInputType == 0)
         {
             NDS::MicInputFrame(NULL, 0);
@@ -911,14 +996,7 @@ bool PauseButtonActions(u32 pressed, unsigned int selection)
             StartCore(true);
             return true;
         }
-        else if (selection == 1) // Open/close lid
-        {
-            LidClosed = !LidClosed;
-            NDS::SetLidClosed(LidClosed);
-            StartCore(true);
-            return true;
-        }
-        else if (selection == 2 || selection == 3) // Save/load state
+        else if (selection == 1 || selection == 2) // Save/load state
         {
             Savestate *state = new Savestate(const_cast<char*>(StatePath.c_str()), selection == 2);
             if (!state->Error)
@@ -929,13 +1007,12 @@ bool PauseButtonActions(u32 pressed, unsigned int selection)
             }
             delete state;
 
-            PauseMenuItems[1] = LidClosed ? "Open lid" : "Close lid";
             StartCore(true);
             return true;
         }
-        else if (selection == 4) // Options
+        else if (selection == 3) // Settings
         {
-            OptionsMenu();
+            SettingsMenu();
         }
         else // File browser
         {
@@ -958,7 +1035,7 @@ void PauseDrawRow(unsigned int i, unsigned int row, unsigned int selection)
 void PauseMenu()
 {
     Pause();
-    Menu("Ä OK", PauseMenuItems.size(), PauseButtonActions, PauseDrawRow);
+    Menu("melonDS " MELONDS_VERSION, "Ä OK", PauseMenuItems.size(), PauseButtonActions, PauseDrawRow);
 }
 
 bool LocalFileExists(const char *name)
@@ -1032,7 +1109,7 @@ int main(int argc, char **argv)
 
     DisplayBuffer = new u32[256 * 384];
 
-    HidControllerKeys keys[] = { KEY_A, KEY_B, KEY_MINUS, KEY_PLUS, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ZR, KEY_ZL, KEY_X, KEY_Y };
+    HidControllerKeys defaultkeys[] = { KEY_A, KEY_B, KEY_MINUS, KEY_PLUS, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ZR, KEY_ZL, KEY_X, KEY_Y };
 
     while (appletMainLoop())
     {
@@ -1040,19 +1117,30 @@ int main(int argc, char **argv)
         u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
         u32 released = hidKeysUp(CONTROLLER_P1_AUTO);
 
-        if (pressed & KEY_L || pressed & KEY_R)
+        for (int i = 0; i < 12; i++)
+        {
+            if (pressed & ((Config::JoyMapping[i] == -1) ? defaultkeys[i] : BIT(Config::JoyMapping[i])))
+                NDS::PressKey(i > 9 ? i + 6 : i);
+            if (released & ((Config::JoyMapping[i] == -1) ? defaultkeys[i] : BIT(Config::JoyMapping[i])))
+                NDS::ReleaseKey(i > 9 ? i + 6 : i);
+        }
+
+        if (pressed & ((Config::HKJoyMapping[HK_Lid] == -1) ? KEY_RSTICK : BIT(Config::HKJoyMapping[HK_Lid])))
+        {
+            LidClosed = !LidClosed;
+            NDS::SetLidClosed(LidClosed);
+        }
+
+        if (pressed & ((Config::HKJoyMapping[HK_Mic] == -1) ? KEY_LSTICK : BIT(Config::HKJoyMapping[HK_Mic])))
+            MicOutput = true;
+        else if (released & ((Config::HKJoyMapping[HK_Mic] == -1) ? KEY_LSTICK : BIT(Config::HKJoyMapping[HK_Mic])))
+            MicOutput = false;
+
+        if (pressed & ((Config::HKJoyMapping[HK_Menu] == -1) ? KEY_R : BIT(Config::HKJoyMapping[HK_Menu])))
         {
             PauseMenu();
             if (ROMPath == "")
                 break;
-        }
-
-        for (int i = 0; i < 12; i++)
-        {
-            if (pressed & keys[i])
-                NDS::PressKey(i > 9 ? i + 6 : i);
-            else if (released & keys[i])
-                NDS::ReleaseKey(i > 9 ? i + 6 : i);
         }
 
         if (hidTouchCount() > 0)

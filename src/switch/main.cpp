@@ -513,9 +513,15 @@ void FilesDrawRow(unsigned int i, unsigned int row, unsigned int selection)
 {
     DrawString(Files[row], 184, 140 + i * 70, 38, row == selection, false);
     if (Files[row].find(".nds", Files[row].length() - 4) == string::npos)
+    {
         DrawIcon(Folder, 105, 127 + i * 70, 64);
+    }
     else
-        DrawIcon(IconFromROM(ROMPath + "/" + Files[row]), 105, 127 + i * 70, 32);
+    {
+        u8 *icon = IconFromROM(ROMPath + "/" + Files[row]);
+        DrawIcon(icon, 105, 126 + i * 70, 32);
+        delete[] icon;
+    }
 }
 
 void FilesMenu()

@@ -93,59 +93,59 @@ typedef struct
 const vector<string> ControlEntries =
 {
     "Default",
-    "A button", "B button", "X button", "Y button",
-    "Left stick click", "Right stick click",
-    "L button", "R button", "ZL button", "ZR button",
-    "Plus button", "Minus button",
-    "D-pad left", "D-pad up", "D-pad right", "D-pad down",
-    "Left stick left", "Left stick up", "Left stick right", "Left stick down",
-    "Right stick left", "Right stick up", "Right stick right", "Right stick down",
+    "A Button", "B Button", "X Button", "Y Button",
+    "Left Stick Click", "Right Stick Click",
+    "L Button", "R Button", "ZL Button", "ZR Button",
+    "Plus Button", "Minus Button",
+    "D-Pad Left", "D-Pad Up", "D-Pad Right", "D-Pad Down",
+    "Left Stick Left", "Left Stick Up", "Left Stick Right", "Left Stick Down",
+    "Right Stick Left", "Right Stick Up", "Right Stick Right", "Right Stick Down",
     "Left Joy-Con SL", "Left Joy-Con SR", "Right Joy-Con SL", "Right Joy-Con SR"
 };
 
 const vector<Setting> Controls =
 {
-    { "A button",          ControlEntries, &Config::JoyMapping[0]         },
-    { "B button",          ControlEntries, &Config::JoyMapping[1]         },
-    { "Select button",     ControlEntries, &Config::JoyMapping[2]         },
-    { "Start button",      ControlEntries, &Config::JoyMapping[3]         },
-    { "D-pad right",       ControlEntries, &Config::JoyMapping[4]         },
-    { "D-pad left",        ControlEntries, &Config::JoyMapping[5]         },
-    { "D-pad up",          ControlEntries, &Config::JoyMapping[6]         },
-    { "D-pad down",        ControlEntries, &Config::JoyMapping[7]         },
-    { "R button",          ControlEntries, &Config::JoyMapping[8]         },
-    { "L button",          ControlEntries, &Config::JoyMapping[9]         },
-    { "X button",          ControlEntries, &Config::JoyMapping[10]        },
-    { "Y button",          ControlEntries, &Config::JoyMapping[11]        },
-    { "Close/open lid",    ControlEntries, &Config::HKJoyMapping[HK_Lid]  },
+    { "A Button",          ControlEntries, &Config::JoyMapping[0]         },
+    { "B Button",          ControlEntries, &Config::JoyMapping[1]         },
+    { "Select Button",     ControlEntries, &Config::JoyMapping[2]         },
+    { "Start Button",      ControlEntries, &Config::JoyMapping[3]         },
+    { "D-Pad Right",       ControlEntries, &Config::JoyMapping[4]         },
+    { "D-Pad Left",        ControlEntries, &Config::JoyMapping[5]         },
+    { "D-Pad Up",          ControlEntries, &Config::JoyMapping[6]         },
+    { "D-Pad Down",        ControlEntries, &Config::JoyMapping[7]         },
+    { "R Button",          ControlEntries, &Config::JoyMapping[8]         },
+    { "L Button",          ControlEntries, &Config::JoyMapping[9]         },
+    { "X Button",          ControlEntries, &Config::JoyMapping[10]        },
+    { "Y Button",          ControlEntries, &Config::JoyMapping[11]        },
+    { "Close/Open Lid",    ControlEntries, &Config::HKJoyMapping[HK_Lid]  },
     { "Microphone",        ControlEntries, &Config::HKJoyMapping[HK_Mic]  },
-    { "Pause menu",        ControlEntries, &Config::HKJoyMapping[HK_Menu] },
-    { "Reset to defaults", {},             NULL                           }
+    { "Pause Menu",        ControlEntries, &Config::HKJoyMapping[HK_Menu] },
+    { "Reset to Defaults", {},             NULL                           }
 };
 
 const vector<Setting> Settings =
 {
-    { "Boot game directly",                 { "Off", "On" },                                                               &Config::DirectBoot },
-    { "Threaded 3D renderer",               { "Off", "On" },                                                               &Config::Threaded3D },
-    { "Audio volume",                       { "0%", "25%", "50%", "75%", "100%" },                                         &Config::AudioVolume },
-    { "Microphone input",                   { "None", "Microphone", "White noise" },                                       &Config::MicInputType },
-    { "Separate savefiles from savestates", { "Off", "On" },                                                               &Config::SavestateRelocSRAM },
-    { "Screen rotation",                    { "0", "90", "180", "270" },                                                   &Config::ScreenRotation },
-    { "Mid-screen gap",                     { "0 pixels", "1 pixel", "8 pixels", "64 pixels", "90 pixels", "128 pixels" }, &Config::ScreenGap },
-    { "Screen layout",                      { "Natural", "Vertical", "Horizontal" },                                       &Config::ScreenLayout },
-    { "Screen sizing",                      { "Even", "Emphasize top", "Emphasize bottom" },                               &Config::ScreenSizing },
-    { "Screen filtering",                   { "Off", "On" },                                                               &Config::ScreenFilter },
-    { "Limit framerate",                    { "Off", "On" },                                                               &Config::LimitFPS },
-    { "Switch overclock",                   { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" },                            &Config::SwitchOverclock }
+    { "Boot Game Directly",                 { "Off", "On" },                                                               &Config::DirectBoot },
+    { "Threaded 3D Renderer",               { "Off", "On" },                                                               &Config::Threaded3D },
+    { "Audio Volume",                       { "0%", "25%", "50%", "75%", "100%" },                                         &Config::AudioVolume },
+    { "Microphone Input",                   { "None", "Microphone", "White Noise" },                                       &Config::MicInputType },
+    { "Separate Savefiles from Savestates", { "Off", "On" },                                                               &Config::SavestateRelocSRAM },
+    { "Screen Rotation",                    { "0", "90", "180", "270" },                                                   &Config::ScreenRotation },
+    { "Mid-Screen Gap",                     { "0 Pixels", "1 Pixel", "8 Pixels", "64 Pixels", "90 Pixels", "128 Pixels" }, &Config::ScreenGap },
+    { "Screen Layout",                      { "Natural", "Vertical", "Horizontal" },                                       &Config::ScreenLayout },
+    { "Screen Sizing",                      { "Even", "Emphasize Top", "Emphasize Bottom" },                               &Config::ScreenSizing },
+    { "Screen Filtering",                   { "Off", "On" },                                                               &Config::ScreenFilter },
+    { "Limit Framerate",                    { "Off", "On" },                                                               &Config::LimitFPS },
+    { "Switch Overclock",                   { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" },                            &Config::SwitchOverclock }
 };
 
 const vector<string> PauseMenuItems =
 {
     "Resume",
-    "Save state",
-    "Load state",
+    "Save State",
+    "Load State",
     "Settings",
-    "File browser"
+    "File Browser"
 };
 
 typedef struct
@@ -301,7 +301,7 @@ u8 *IconFromROM(string filename)
         tiles[i * 3 + 2] = (palette[indexes[i] / 16] & 0x1f) * 255 / 31;
     }
 
-    // Rearrange the pixels from 8x8 tiles to a 32x32 texture
+    // Rearrange the Pixels from 8x8 tiles to a 32x32 texture
     u8 *tex = new u8[32 * 32 * 3];
     for (int i = 0; i < 4; i++)
         for (int j = 0; j < 8; j++)
@@ -389,7 +389,7 @@ void DrawIcon(u8 *tex, float x, float y, int size)
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
-void Menu(string title, string buttons, unsigned int rowcount, bool (*buttonactions)(u32, unsigned int), void (*drawrow)(unsigned int, unsigned int, unsigned int))
+void Menu(string title, string Buttons, unsigned int rowcount, bool (*Buttonactions)(u32, unsigned int), void (*drawrow)(unsigned int, unsigned int, unsigned int))
 {
     float clearcolor = ((MenuTheme == ColorSetId_Light) ? 235.0f : 45.0f) / 255;
     glClearColor(clearcolor, clearcolor, clearcolor, 1.0f);
@@ -410,7 +410,7 @@ void Menu(string title, string buttons, unsigned int rowcount, bool (*buttonacti
         DrawLine(30, 88, 1250, 88, false);
         DrawLine(30, 648, 1250, 648, false);
         DrawLine(90, 124, 1190, 124, true);
-        DrawString(buttons, 1218, 667, 34, false, true);
+        DrawString(Buttons, 1218, 667, 34, false, true);
 
         hidScanInput();
         u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
@@ -428,7 +428,7 @@ void Menu(string title, string buttons, unsigned int rowcount, bool (*buttonacti
             downheld = true;
             timeheld = chrono::steady_clock::now();
         }
-        if (buttonactions(pressed, selection))
+        if (Buttonactions(pressed, selection))
             break;
 
         if (released & KEY_UP)

@@ -44,10 +44,11 @@
 using namespace std;
 
 ColorSetId MenuTheme;
-u8 *Font, *FontColor;
+u8 *Font, *FontColor, *Folder;
 
 char *EmuDirectory;
 string ROMPath, SRAMPath, StatePath, StateSRAMPath;
+vector<string> Files;
 
 int SamplesOut;
 s16 *AudOutBufferData, *AudInBufferData;
@@ -102,6 +103,16 @@ const vector<Option> Options =
     { "Screen filtering",                   { "Off", "On" },                                                               &Config::ScreenFilter },
     { "Limit framerate",                    { "Off", "On" },                                                               &Config::LimitFPS },
     { "Switch overclock",                   { "1020 MHz", "1224 MHz", "1581 MHz", "1785 MHz" },                            &Config::SwitchOverclock }
+};
+
+vector<string> PauseMenuItems =
+{
+    "Resume",
+    "Close lid",
+    "Save state",
+    "Load state",
+    "Options",
+    "File browser"
 };
 
 typedef struct
@@ -213,11 +224,58 @@ u8 *TexFromBMP(string filename)
     int width = *(int*)&header[18];
     int height = *(int*)&header[22];
 
-    u8 *data = new u8[width * height * 3];
-    fread(data, sizeof(u8), width * height * 3, bmp);
+    // The bitmap data is stored from bottom to top, so reverse it
+    u8 *tex = new u8[width * height * 3];
+    for (int i = 1; i <= height; i++)
+        fread(&tex[width * (height - i) * 3], sizeof(u8), width * 3, bmp);
 
     fclose(bmp);
-    return data;
+    return tex;
+}
+
+u8 *IconFromROM(string filename)
+{
+    FILE *rom = melon_fopen(filename.c_str(), "rb");
+
+    u32 offset;
+    fseek(rom, 0x68, SEEK_SET);
+    fread(&offset, sizeof(u32), 1, rom);
+
+    u8 data[512];
+    fseek(rom, 0x20 + offset, SEEK_SET);
+    fread(data, sizeof(u8), 512, rom);
+
+    u16 palette[16];
+    fseek(rom, 0x220 + offset, SEEK_SET);
+    fread(palette, sizeof(u16), 16, rom);
+
+    fclose(rom);
+
+    // Get the 4-bit palette indexes
+    u8 indexes[1024];
+    for (int i = 0; i < 512; i++)
+    {
+        indexes[i * 2] = data[i] << 4;
+        indexes[i * 2 + 1] = data[i];
+    }
+
+    // Get each pixel's 5-bit palette color and convert it to 8-bit
+    u8 tiles[32 * 32 * 3];
+    for (int i = 0; i < 1024; i++)
+    {
+        tiles[i * 3] = ((palette[indexes[i] / 16] >> 10) & 0x1f) * 255 / 31;
+        tiles[i * 3 + 1] = ((palette[indexes[i] / 16] >> 5) & 0x1f) * 255 / 31;
+        tiles[i * 3 + 2] = (palette[indexes[i] / 16] & 0x1f) * 255 / 31;
+    }
+
+    // Rearrange the pixels from 8x8 tiles to a 32x32 texture
+    u8 *tex = new u8[32 * 32 * 3];
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 8; j++)
+            for (int k = 0; k < 4; k++)
+                memcpy(&tex[(256 * i + 32 * j + 8 * k) * 3], &tiles[(256 * i + 8 * j + 64 * k) * 3], 8 * 3);
+
+    return tex;
 }
 
 void DrawString(string str, float x, float y, int size, bool color, bool fromright)
@@ -233,15 +291,15 @@ void DrawString(string str, float x, float y, int size, bool color, bool fromrig
     for (unsigned int i = 0; i < str.size(); i++)
     {
         int col = str[i] - 32;
-        int row = 9;
+        int row = 0;
         while (col > 9)
         {
             col -= 10;
-            row--;
+            row++;
         }
 
         for (int j = 0; j < 48; j++)
-            memcpy(&tex[(j * width + currentx) * 3], &font[((row * 512 + col) * 48 + (j + 32) * 512) * 3], CharWidth[str[i] - 32] * 3);
+            memcpy(&tex[(j * width + currentx) * 3], &font[((row * 512 + col) * 48 + j * 512) * 3], CharWidth[str[i] - 32] * 3);
 
         currentx += CharWidth[str[i] - 32];
     }
@@ -251,10 +309,10 @@ void DrawString(string str, float x, float y, int size, bool color, bool fromrig
 
     Vertex string[] =
     {
-        { { x + width * size / 48, y        }, { 1.0f, 1.0f } },
-        { { x,                     y        }, { 0.0f, 1.0f } },
-        { { x,                     y + size }, { 0.0f, 0.0f } },
-        { { x + width * size / 48, y + size }, { 1.0f, 0.0f } }
+        { { x + width * size / 48, y + size }, { 1.0f, 1.0f } },
+        { { x,                     y + size }, { 0.0f, 1.0f } },
+        { { x,                     y        }, { 0.0f, 0.0f } },
+        { { x + width * size / 48, y        }, { 1.0f, 0.0f } }
     };
 
     glBufferData(GL_ARRAY_BUFFER, sizeof(string), string, GL_DYNAMIC_DRAW);
@@ -283,45 +341,8 @@ void DrawLine(float x1, float y1, float x2, float y2, bool color)
     glDrawArrays(GL_LINES, 0, 2);
 }
 
-void DrawIcon(string filename, float x, float y)
+void DrawIcon(u8 *tex, float x, float y, int size)
 {
-    FILE *rom = melon_fopen(filename.c_str(), "rb");
-
-    u32 offset;
-    fseek(rom, 0x68, SEEK_SET);
-    fread(&offset, sizeof(u32), 1, rom);
-
-    u8 data[512];
-    fseek(rom, 0x20 + offset, SEEK_SET);
-    fread(data, sizeof(u8), 512, rom);
-
-    u16 palette[16];
-    fseek(rom, 0x220 + offset, SEEK_SET);
-    fread(palette, sizeof(u16), 16, rom);
-
-    fclose(rom);
-
-    u8 indexes[1024];
-    for (int i = 0; i < 512; i++)
-    {
-        indexes[i * 2] = data[i] << 4;
-        indexes[i * 2 + 1] = data[i];
-    }
-
-    u8 tiles[32 * 32 * 3];
-    for (int i = 0; i < 1024; i++)
-    {
-        tiles[i * 3] = ((palette[indexes[i] / 16] >> 10) & 0x1f) * 255 / 31;
-        tiles[i * 3 + 1] = ((palette[indexes[i] / 16] >> 5) & 0x1f) * 255 / 31;
-        tiles[i * 3 + 2] = (palette[indexes[i] / 16] & 0x1f) * 255 / 31;
-    }
-
-    u8 tex[32 * 32 * 3];
-    for (int i = 0; i < 4; i++)
-        for (int j = 0; j < 8; j++)
-            for (int k = 0; k < 4; k++)
-                memcpy(&tex[(256 * i + 32 * j + 8 * k) * 3], &tiles[(256 * i + 8 * j + 64 * k) * 3], 8 * 3);
-
     Vertex icon[] =
     {
         { { x + 64, y + 64 }, { 1.0f, 1.0f } },
@@ -331,20 +352,19 @@ void DrawIcon(string filename, float x, float y)
     };
 
     glBufferData(GL_ARRAY_BUFFER, sizeof(icon), icon, GL_DYNAMIC_DRAW);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 32, 32, 0, GL_BGR, GL_UNSIGNED_BYTE, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, size, size, 0, GL_BGR, GL_UNSIGNED_BYTE, tex);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
-void Menu(vector<string> items, vector<string> values, string buttons, unsigned int *selection)
+void Menu(string buttons, unsigned int rowcount, bool (*buttonactions)(u32, unsigned int), void (*drawrow)(unsigned int, unsigned int, unsigned int))
 {
-    if (MenuTheme == ColorSetId_Light)
-        glClearColor(235.0f / 255, 235.0f / 255, 235.0f / 255, 1.0f);
-    else
-        glClearColor(45.0f / 255, 45.0f / 255, 45.0f / 255, 1.0f);
+    float clearcolor = ((MenuTheme == ColorSetId_Light) ? 235.0f : 45.0f) / 255;
+    glClearColor(clearcolor, clearcolor, clearcolor, 1.0f);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+    unsigned int selection = 0;
     bool upheld = false;
     bool downheld = false;
     bool scroll = false;
@@ -363,75 +383,58 @@ void Menu(vector<string> items, vector<string> values, string buttons, unsigned 
         u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
         u32 released = hidKeysUp(CONTROLLER_P1_AUTO);
 
-        if (pressed & KEY_UP && *selection > 0)
+        if (pressed & KEY_UP && selection > 0)
         {
-            (*selection)--;
+            selection--;
             upheld = true;
             timeheld = chrono::steady_clock::now();
         }
-        else if (pressed & KEY_DOWN && *selection < items.size() - 1)
+        else if (pressed & KEY_DOWN && selection < rowcount - 1)
         {
-            (*selection)++;
+            selection++;
             downheld = true;
             timeheld = chrono::steady_clock::now();
         }
-        else if (pressed)
-        {
+        if (buttonactions(pressed, selection))
             break;
-        }
 
         if (released & KEY_UP)
         {
             upheld = false;
             scroll = false;
         }
-        else if (upheld && *selection > 0)
-        {
-            chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
-            if (!scroll && elapsed.count() > 0.5f)
-                scroll = true;
-            if (scroll && elapsed.count() > 0.1f)
-            {
-                (*selection)--;
-                timeheld = chrono::steady_clock::now();
-            }
-        }
-
         if (released & KEY_DOWN)
         {
             downheld = false;
             scroll = false;
         }
-        else if (downheld && *selection < items.size() - 1)
+
+        if ((upheld && selection > 0) || (downheld && selection < rowcount - 1))
         {
             chrono::duration<double> elapsed = chrono::steady_clock::now() - timeheld;
             if (!scroll && elapsed.count() > 0.5f)
                 scroll = true;
             if (scroll && elapsed.count() > 0.1f)
             {
-                (*selection)++;
+                selection += (upheld && selection > 0) ? -1 : 1;
                 timeheld = chrono::steady_clock::now();
             }
         }
 
         for (unsigned int i = 0; i < 7; i++)
         {
-            if (i < items.size())
+            if (i < rowcount)
             {
                 unsigned int row;
-                if (*selection < 4 || items.size() <= 7)
+                if (selection < 4 || rowcount <= 7)
                     row = i;
-                else if (*selection > items.size() - 4)
-                    row = items.size() - 7 + i;
+                else if (selection > rowcount - 4)
+                    row = rowcount - 7 + i;
                 else
-                   row = i + *selection - 3;
+                   row = i + selection - 3;
 
-                DrawString(items[row], 105, 140 + i * 70, 38, row == *selection, false);
-                if (values.size() > row)
-                    DrawString(values[row], 1175, 143 + i * 70, 32, row == *selection, true);
+                drawrow(i, row, selection);
                 DrawLine(90, 194 + i * 70, 1190, 194 + i * 70, true);
-                if (items[row].find(".nds", items[row].length() - 4) != string::npos)
-                    DrawIcon(ROMPath + "/" + items[row], 13, 127 + i * 70);
             }
         }
 
@@ -439,110 +442,109 @@ void Menu(vector<string> items, vector<string> values, string buttons, unsigned 
     }
 }
 
-void OptionsMenu()
+bool OptionsButtonActions(u32 pressed, unsigned int selection)
 {
-    vector<string> items;
-    for (unsigned int i = 0; i < Options.size(); i++)
-        items.push_back(Options[i].name);
-
-    unsigned int selection = 0;
-
-    while (true)
+    if (pressed & KEY_A)
     {
-        vector<string> values;
-        for (unsigned int i = 0; i < Options.size(); i++)
+        if (selection == 2) // Audio volume
         {
-            if (i == 2) // Audio volume
-                values.push_back(Options[i].entries[*Options[i].value * 4 / 256]);
-            else
-                values.push_back(Options[i].entries[*Options[i].value]);
+            (*Options[selection].value) += 256 / 4;
+            if (*Options[selection].value > 256)
+                *Options[selection].value = 0;
         }
-
-        Menu(items, values, "Å Back     Ä OK", &selection);
-        u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
-
-        if (pressed & KEY_A)
+        else
         {
-            if (selection == 2) // Audio volume
-            {
-                (*Options[selection].value) += 256 / 4;
-                if (*Options[selection].value > 256)
-                    *Options[selection].value = 0;
-            }
-            else
-            {
-                (*Options[selection].value)++;
-                if (*Options[selection].value >= (int)Options[selection].entries.size())
-                    *Options[selection].value = 0;
-            }
-        }
-        else if (pressed & KEY_B)
-        {
-            Config::Save();
-            break;
+            (*Options[selection].value)++;
+            if (*Options[selection].value >= (int)Options[selection].entries.size())
+                *Options[selection].value = 0;
         }
     }
+    else if (pressed & KEY_B)
+    {
+        Config::Save();
+        return true;
+    }
+
+    return false;
+}
+
+void OptionsDrawRow(unsigned int i, unsigned int row, unsigned int selection)
+{
+    DrawString(Options[row].name, 105, 140 + i * 70, 38, row == selection, false);
+    if (row == 2) // Audio volume
+        DrawString(Options[row].entries[*Options[row].value * 4 / 256], 1175, 143 + i * 70, 32, row == selection, true);
+    else
+        DrawString(Options[row].entries[*Options[row].value], 1175, 143 + i * 70, 32, row == selection, true);
+}
+
+void OptionsMenu()
+{
+    Menu("Å Back     Ä OK", Options.size(), OptionsButtonActions, OptionsDrawRow);
+}
+
+bool FilesButtonActions(u32 pressed, unsigned int selection)
+{
+    if (pressed & KEY_A && Files.size() > 0)
+    {
+        ROMPath += "/" + Files[selection];
+        selection = 0;
+        return true;
+    }
+    else if (pressed & KEY_B && ROMPath != "sdmc:/")
+    {
+        ROMPath = ROMPath.substr(0, ROMPath.rfind("/"));
+        selection = 0;
+        return true;
+    }
+    else if (pressed & KEY_X)
+    {
+        OptionsMenu();
+    }
+    else if (pressed & KEY_PLUS)
+    {
+        ROMPath = "";
+        return true;
+    }
+
+    return false;
+}
+
+void FilesDrawRow(unsigned int i, unsigned int row, unsigned int selection)
+{
+    DrawString(Files[row], 184, 140 + i * 70, 38, row == selection, false);
+    if (Files[row].find(".nds", Files[row].length() - 4) == string::npos)
+        DrawIcon(Folder, 105, 127 + i * 70, 64);
+    else
+        DrawIcon(IconFromROM(ROMPath + "/" + Files[row]), 105, 127 + i * 70, 32);
 }
 
 void FilesMenu()
 {
-    if (strcmp(Config::LastROMFolder, "") == 0)
-        ROMPath = "sdmc:/";
-    else
-        ROMPath = Config::LastROMFolder;
-
-    unsigned int selection = 0;
+    ROMPath = (strcmp(Config::LastROMFolder, "") == 0) ? "sdmc:/" : Config::LastROMFolder;
 
     while (ROMPath.find(".nds", ROMPath.length() - 4) == string::npos)
     {
-        vector<string> files;
         DIR *dir = opendir(ROMPath.c_str());
         dirent *entry;
         while ((entry = readdir(dir)))
         {
             string name = entry->d_name;
             if (entry->d_type == DT_DIR || name.find(".nds", (name.length() - 4)) != string::npos)
-                files.push_back(name);
+                Files.push_back(name);
         }
         closedir(dir);
-        sort(files.begin(), files.end());
+        sort(Files.begin(), Files.end());
 
-        Menu(files, vector<string>(), "É Exit     Ç Options     Å Back     Ä OK", &selection);
-        u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
-
-        if (pressed & KEY_A && files.size() > 0)
-        {
-            ROMPath += "/" + files[selection];
-            selection = 0;
-        }
-        else if (pressed & KEY_B && ROMPath != "sdmc:/")
-        {
-            ROMPath = ROMPath.substr(0, ROMPath.rfind("/"));
-            selection = 0;
-        }
-        else if (pressed & KEY_X)
-        {
-            OptionsMenu();
-        }
-        else if (pressed & KEY_PLUS)
-        {
-            ROMPath = "";
+        Menu("É Exit     Ç Options     Å Back     Ä OK", Files.size(), FilesButtonActions, FilesDrawRow);
+        if (ROMPath == "")
             return;
-        }
+
+        Files.clear();
     }
 
     string folder = ROMPath.substr(0, ROMPath.rfind("/")).c_str();
     folder.append(1, '\0');
     strncpy(Config::LastROMFolder, folder.c_str(), folder.length());
-}
-
-bool LocalFileExists(const char *name)
-{
-    FILE *file = melon_fopen_local(name, "rb");
-    if (!file)
-        return false;
-    fclose(file);
-    return true;
 }
 
 void SetScreenLayout()
@@ -746,11 +748,7 @@ void SetupAudioBuffer()
 {
     // Dynamically switch audio sample rate when the system is docked/undocked
     // For some reason both modes act differently with different sample rates
-    if (appletGetOperationMode() == AppletOperationMode_Handheld)
-        SamplesOut = 1440;
-    else
-        SamplesOut = 2048;
-
+    SamplesOut = (appletGetOperationMode() == AppletOperationMode_Handheld) ? 1440 : 2048;
     AudOutBufferData = new s16[(SamplesOut * 2 + 0xfff) & ~0xfff];
     AudOutBuffer.next = NULL;
     AudOutBuffer.buffer = AudOutBufferData;
@@ -898,68 +896,72 @@ void Pause()
     appletUnlockExit();
 }
 
+bool PauseButtonActions(u32 pressed, unsigned int selection)
+{
+    if (pressed & KEY_A)
+    {
+        if (selection == 0) // Resume
+        {
+            StartCore(true);
+            return true;
+        }
+        else if (selection == 1) // Open/close lid
+        {
+            LidClosed = !LidClosed;
+            NDS::SetLidClosed(LidClosed);
+            StartCore(true);
+            return true;
+        }
+        else if (selection == 2 || selection == 3) // Save/load state
+        {
+            Savestate *state = new Savestate(const_cast<char*>(StatePath.c_str()), selection == 2);
+            if (!state->Error)
+            {
+                NDS::DoSavestate(state);
+                if (Config::SavestateRelocSRAM)
+                    NDS::RelocateSave(const_cast<char*>(StateSRAMPath.c_str()), selection == 2);
+            }
+            delete state;
+
+            PauseMenuItems[1] = LidClosed ? "Open lid" : "Close lid";
+            StartCore(true);
+            return true;
+        }
+        else if (selection == 4) // Options
+        {
+            OptionsMenu();
+        }
+        else // File browser
+        {
+            NDS::DeInit();
+            FilesMenu();
+            if (ROMPath != "")
+                StartCore(false);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void PauseDrawRow(unsigned int i, unsigned int row, unsigned int selection)
+{
+    DrawString(PauseMenuItems[row], 105, 140 + i * 70, 38, row == selection, false);
+}
+
 void PauseMenu()
 {
     Pause();
+    Menu("Ä OK", PauseMenuItems.size(), PauseButtonActions, PauseDrawRow);
+}
 
-    vector<string> items = 
-    {
-        "Resume",
-        LidClosed ? "Open lid" : "Close lid",
-        "Save state",
-        "Load state",
-        "Options",
-        "File browser"
-    };
-
-    unsigned int selection = 0;
-
-    while (Paused)
-    {
-        Menu(items, vector<string>(), "Ä OK", &selection);
-        u32 pressed = hidKeysDown(CONTROLLER_P1_AUTO);
-
-        if (pressed & KEY_A)
-        {
-            if (selection == 0) // Resume
-            {
-                StartCore(true);
-            }
-            else if (selection == 1) // Open/close lid
-            {
-                LidClosed = !LidClosed;
-                NDS::SetLidClosed(LidClosed);
-                StartCore(true);
-            }
-            else if (selection == 2 || selection == 3) // Save/load state
-            {
-                Savestate *state = new Savestate(const_cast<char*>(StatePath.c_str()), selection == 2);
-                if (!state->Error)
-                {
-                    NDS::DoSavestate(state);
-                    if (Config::SavestateRelocSRAM)
-                        NDS::RelocateSave(const_cast<char*>(StateSRAMPath.c_str()), selection == 2);
-                }
-                delete state;
-
-                StartCore(true);
-            }
-            else if (selection == 4) // Options
-            {
-                OptionsMenu();
-            }
-            else // File browser
-            {
-                NDS::DeInit();
-
-                FilesMenu();
-                if (ROMPath == "")
-                    break;
-
-                StartCore(false);
-            }
-        }
-    }
+bool LocalFileExists(const char *name)
+{
+    FILE *file = melon_fopen_local(name, "rb");
+    if (!file)
+        return false;
+    fclose(file);
+    return true;
 }
 
 int main(int argc, char **argv)
@@ -971,16 +973,10 @@ int main(int argc, char **argv)
     setsysExit();
 
     romfsInit();
-    if (MenuTheme == ColorSetId_Light)
-    {
-        Font = TexFromBMP("romfs:/lightfont.bmp");
-        FontColor = TexFromBMP("romfs:/lightfont-color.bmp");
-    }
-    else
-    {
-        Font = TexFromBMP("romfs:/darkfont.bmp");
-        FontColor = TexFromBMP("romfs:/darkfont-color.bmp");
-    }
+    string theme = (MenuTheme == ColorSetId_Light) ? "light" : "dark";
+    Font = TexFromBMP("romfs:/font-" + theme + ".bmp");
+    FontColor = TexFromBMP("romfs:/fontcolor-" + theme + ".bmp");
+    Folder = TexFromBMP("romfs:/folder-" + theme + ".bmp");
     romfsExit();
 
     EmuDirectory = (char*)"sdmc:/switch/melonds";
@@ -1061,22 +1057,22 @@ int main(int argc, char **argv)
             if (touch.px > TouchBoundLeft && touch.px < TouchBoundRight && touch.py > TouchBoundTop && touch.py < TouchBoundBottom)
             {
                 int x, y;
-                if (Config::ScreenRotation == 0)
+                if (Config::ScreenRotation == 0) // 0
                 {
                     x = (touch.px - TouchBoundLeft) * 256.0f / (TouchBoundRight - TouchBoundLeft);
                     y = (touch.py - TouchBoundTop) * 256.0f / (TouchBoundRight - TouchBoundLeft);
                 }
-                else if (Config::ScreenRotation == 1)
+                else if (Config::ScreenRotation == 1) // 90
                 {
                     x = (touch.py - TouchBoundTop) * 192.0f / (TouchBoundRight - TouchBoundLeft);
                     y = 192 - (touch.px - TouchBoundLeft) * 192.0f / (TouchBoundRight - TouchBoundLeft);
                 }
-                else if (Config::ScreenRotation == 2)
+                else if (Config::ScreenRotation == 2) // 180
                 {
                     x = (touch.px - TouchBoundLeft) * -256.0f / (TouchBoundRight - TouchBoundLeft);
                     y = 192 - (touch.py - TouchBoundTop) * 256.0f / (TouchBoundRight - TouchBoundLeft);
                 }
-                else
+                else // 270
                 {
                     x = (touch.py - TouchBoundTop) * -192.0f / (TouchBoundRight - TouchBoundLeft);
                     y = (touch.px - TouchBoundLeft) * 192.0f / (TouchBoundRight - TouchBoundLeft);

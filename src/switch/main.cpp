@@ -1136,7 +1136,7 @@ int main(int argc, char **argv)
         else if (released & ((Config::HKJoyMapping[HK_Mic] == -1) ? KEY_LSTICK : BIT(Config::HKJoyMapping[HK_Mic])))
             MicOutput = false;
 
-        if (pressed & ((Config::HKJoyMapping[HK_Menu] == -1) ? KEY_R : BIT(Config::HKJoyMapping[HK_Menu])))
+        if (pressed & ((Config::HKJoyMapping[HK_Menu] == -1) ? (KEY_L | KEY_R) : BIT(Config::HKJoyMapping[HK_Menu])))
         {
             PauseMenu();
             if (ROMPath == "")

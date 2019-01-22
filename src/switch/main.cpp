@@ -51,7 +51,7 @@ string ROMPath, SRAMPath, StatePath, StateSRAMPath;
 vector<string> Files;
 
 int SamplesOut;
-bool MicOutput;
+bool MicToggle;
 s16 *AudOutBufferData, *AudInBufferData;
 AudioOutBuffer AudOutBuffer, *RelOutBuffer;
 AudioInBuffer AudInBuffer, *RelInBuffer;
@@ -900,10 +900,7 @@ void MicInput(void *args)
 {
     while (!Paused)
     {
-        if (!MicOutput)
-            continue;
-
-        if (Config::MicInputType == 0)
+        if (Config::MicInputType == 0 || !MicToggle)
         {
             NDS::MicInputFrame(NULL, 0);
         }
@@ -1132,9 +1129,9 @@ int main(int argc, char **argv)
         }
 
         if (pressed & ((Config::HKJoyMapping[HK_Mic] == -1) ? KEY_LSTICK : BIT(Config::HKJoyMapping[HK_Mic])))
-            MicOutput = true;
+            MicToggle = true;
         else if (released & ((Config::HKJoyMapping[HK_Mic] == -1) ? KEY_LSTICK : BIT(Config::HKJoyMapping[HK_Mic])))
-            MicOutput = false;
+            MicToggle = false;
 
         if (pressed & ((Config::HKJoyMapping[HK_Menu] == -1) ? (KEY_L | KEY_R) : BIT(Config::HKJoyMapping[HK_Menu])))
         {

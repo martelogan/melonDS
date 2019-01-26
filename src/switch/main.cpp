@@ -1,5 +1,5 @@
 /*
-    Copyright 2018 Hydr8gon
+    Copyright 2018-2019 Hydr8gon
 
     This file is part of melonDS.
 
@@ -51,19 +51,20 @@ string ROMPath, SRAMPath, StatePath, StateSRAMPath;
 vector<string> Files;
 
 int SamplesOut;
-bool MicToggle;
 s16 *AudOutBufferData, *AudInBufferData;
 AudioOutBuffer AudOutBuffer, *RelOutBuffer;
 AudioInBuffer AudInBuffer, *RelInBuffer;
 
 u32 *DisplayBuffer;
 unsigned int TouchBoundLeft, TouchBoundRight, TouchBoundTop, TouchBoundBottom;
-bool Paused, LidClosed;
 
 EGLDisplay Display;
 EGLContext Context;
 EGLSurface Surface;
 GLuint Program, VertArrayObj, VertBufferObj, Texture;
+
+u32 HotkeyMask;
+bool LidClosed;
 
 AppletHookCookie HookCookie;
 
@@ -99,8 +100,7 @@ const vector<string> ControlEntries =
     "Plus Button", "Minus Button",
     "D-Pad Left", "D-Pad Up", "D-Pad Right", "D-Pad Down",
     "Left Stick Left", "Left Stick Up", "Left Stick Right", "Left Stick Down",
-    "Right Stick Left", "Right Stick Up", "Right Stick Right", "Right Stick Down",
-    "Left Joy-Con SL", "Left Joy-Con SR", "Right Joy-Con SL", "Right Joy-Con SR"
+    "Right Stick Left", "Right Stick Up", "Right Stick Right", "Right Stick Down"
 };
 
 const vector<Setting> Controls =
@@ -389,7 +389,7 @@ void DrawIcon(u8 *tex, float x, float y, int size)
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
-void Menu(string title, string Buttons, unsigned int rowcount, bool (*Buttonactions)(u32, unsigned int), void (*drawrow)(unsigned int, unsigned int, unsigned int))
+void Menu(string title, string Buttons, int rowcount, bool (*Buttonactions)(u32, int), void (*drawrow)(int, int, int))
 {
     float clearcolor = ((MenuTheme == ColorSetId_Light) ? 235.0f : 45.0f) / 255;
     glClearColor(clearcolor, clearcolor, clearcolor, 1.0f);
@@ -397,7 +397,7 @@ void Menu(string title, string Buttons, unsigned int rowcount, bool (*Buttonacti
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    unsigned int selection = 0;
+    int selection = 0;
     bool upheld = false;
     bool downheld = false;
     bool scroll = false;
@@ -454,11 +454,11 @@ void Menu(string title, string Buttons, unsigned int rowcount, bool (*Buttonacti
             }
         }
 
-        for (unsigned int i = 0; i < 7; i++)
+        for (int i = 0; i < 7; i++)
         {
             if (i < rowcount)
             {
-                unsigned int row;
+                int row;
                 if (selection < 4 || rowcount <= 7)
                     row = i;
                 else if (selection > rowcount - 4)
@@ -475,7 +475,7 @@ void Menu(string title, string Buttons, unsigned int rowcount, bool (*Buttonacti
     }
 }
 
-bool ControlsButtonActions(u32 pressed, unsigned int selection)
+bool ControlsButtonActions(u32 pressed, int selection)
 {
     if (pressed & KEY_A)
     {
@@ -508,7 +508,7 @@ bool ControlsButtonActions(u32 pressed, unsigned int selection)
     return false;
 }
 
-void ControlsDrawRow(unsigned int i, unsigned int row, unsigned int selection)
+void ControlsDrawRow(int i, int row, int selection)
 {
     DrawString(Controls[row].name, 105, 140 + i * 70, 38, row == selection, false);
     if (row != 15) // Reset to defaults
@@ -520,7 +520,7 @@ void ControlsMenu()
     Menu("Controls", " Back     € OK", Controls.size(), ControlsButtonActions, ControlsDrawRow);
 }
 
-bool SettingsButtonActions(u32 pressed, unsigned int selection)
+bool SettingsButtonActions(u32 pressed, int selection)
 {
     if (pressed & KEY_A)
     {
@@ -550,7 +550,7 @@ bool SettingsButtonActions(u32 pressed, unsigned int selection)
     return false;
 }
 
-void SettingsDrawRow(unsigned int i, unsigned int row, unsigned int selection)
+void SettingsDrawRow(int i, int row, int selection)
 {
     DrawString(Settings[row].name, 105, 140 + i * 70, 38, row == selection, false);
     if (row == 2) // Audio volume
@@ -564,7 +564,7 @@ void SettingsMenu()
     Menu("Settings", "‚ Controls      Back     € OK", Settings.size(), SettingsButtonActions, SettingsDrawRow);
 }
 
-bool FilesButtonActions(u32 pressed, unsigned int selection)
+bool FilesButtonActions(u32 pressed, int selection)
 {
     if (pressed & KEY_A && Files.size() > 0)
     {
@@ -591,7 +591,7 @@ bool FilesButtonActions(u32 pressed, unsigned int selection)
     return false;
 }
 
-void FilesDrawRow(unsigned int i, unsigned int row, unsigned int selection)
+void FilesDrawRow(int i, int row, int selection)
 {
     DrawString(Files[row], 184, 140 + i * 70, 38, row == selection, false);
     if (Files[row].find(".nds", Files[row].length() - 4) == string::npos)
@@ -819,7 +819,7 @@ void SetScreenLayout()
 
 void RunCore(void *args)
 {
-    while (!Paused)
+    while (!(HotkeyMask & BIT(HK_Menu)))
     {
         chrono::steady_clock::time_point start = chrono::steady_clock::now();
 
@@ -889,7 +889,7 @@ void FillAudioBuffer()
 
 void AudioOutput(void *args)
 {
-    while (!Paused)
+    while (!(HotkeyMask & BIT(HK_Menu)))
     {
         FillAudioBuffer();
         audoutPlayBuffer(&AudOutBuffer, &RelOutBuffer);
@@ -898,9 +898,9 @@ void AudioOutput(void *args)
 
 void MicInput(void *args)
 {
-    while (!Paused)
+    while (!(HotkeyMask & BIT(HK_Menu)))
     {
-        if (Config::MicInputType == 0 || !MicToggle)
+        if (Config::MicInputType == 0 || !(HotkeyMask & BIT(HK_Mic)))
         {
             NDS::MicInputFrame(NULL, 0);
         }
@@ -950,7 +950,7 @@ void StartCore(bool resume)
         pcvInitialize();
         pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[Config::SwitchOverclock]);
     }
-    Paused = false;
+    HotkeyMask &= ~BIT(HK_Menu);
 
     if (!resume)
     {
@@ -973,7 +973,7 @@ void StartCore(bool resume)
 
 void Pause()
 {
-    Paused = true;
+    HotkeyMask |= BIT(HK_Menu);
     pcvSetClockRate(PcvModule_Cpu, ClockSpeeds[0]);
     pcvExit();
     audinStopAudioIn();
@@ -984,7 +984,7 @@ void Pause()
     appletUnlockExit();
 }
 
-bool PauseButtonActions(u32 pressed, unsigned int selection)
+bool PauseButtonActions(u32 pressed, int selection)
 {
     if (pressed & KEY_A)
     {
@@ -1024,7 +1024,7 @@ bool PauseButtonActions(u32 pressed, unsigned int selection)
     return false;
 }
 
-void PauseDrawRow(unsigned int i, unsigned int row, unsigned int selection)
+void PauseDrawRow(int i, int row, int selection)
 {
     DrawString(PauseMenuItems[row], 105, 140 + i * 70, 38, row == selection, false);
 }
@@ -1106,7 +1106,13 @@ int main(int argc, char **argv)
 
     DisplayBuffer = new u32[256 * 384];
 
-    HidControllerKeys defaultkeys[] = { KEY_A, KEY_B, KEY_MINUS, KEY_PLUS, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ZR, KEY_ZL, KEY_X, KEY_Y };
+    u32 defaultkeys[] =
+    {
+        KEY_A, KEY_B, KEY_MINUS, KEY_PLUS,
+        KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN,
+        KEY_ZR, KEY_ZL, KEY_X, KEY_Y,
+        KEY_RSTICK, KEY_LSTICK, (KEY_L | KEY_R)
+    };
 
     while (appletMainLoop())
     {
@@ -1116,24 +1122,30 @@ int main(int argc, char **argv)
 
         for (int i = 0; i < 12; i++)
         {
-            if (pressed & ((Config::JoyMapping[i] == -1) ? defaultkeys[i] : BIT(Config::JoyMapping[i])))
+            u32 key = ((Config::JoyMapping[i] == -1) ? defaultkeys[i] : BIT(Config::JoyMapping[i]));
+            if (pressed & key)
                 NDS::PressKey(i > 9 ? i + 6 : i);
-            if (released & ((Config::JoyMapping[i] == -1) ? defaultkeys[i] : BIT(Config::JoyMapping[i])))
+            if (released & key)
                 NDS::ReleaseKey(i > 9 ? i + 6 : i);
         }
 
-        if (pressed & ((Config::HKJoyMapping[HK_Lid] == -1) ? KEY_RSTICK : BIT(Config::HKJoyMapping[HK_Lid])))
+        for (int i = 0; i < HK_MAX; i++)
+        {
+            u32 key = ((Config::HKJoyMapping[i] == -1) ? defaultkeys[i + 12] : BIT(Config::HKJoyMapping[i]));
+            if (pressed & key)
+                HotkeyMask |= BIT(i);
+            else if (released & key)
+                HotkeyMask &= ~BIT(i);
+        }
+
+        if (HotkeyMask & BIT(HK_Lid))
         {
             LidClosed = !LidClosed;
             NDS::SetLidClosed(LidClosed);
+            HotkeyMask &= ~BIT(HK_Lid);
         }
 
-        if (pressed & ((Config::HKJoyMapping[HK_Mic] == -1) ? KEY_LSTICK : BIT(Config::HKJoyMapping[HK_Mic])))
-            MicToggle = true;
-        else if (released & ((Config::HKJoyMapping[HK_Mic] == -1) ? KEY_LSTICK : BIT(Config::HKJoyMapping[HK_Mic])))
-            MicToggle = false;
-
-        if (pressed & ((Config::HKJoyMapping[HK_Menu] == -1) ? (KEY_L | KEY_R) : BIT(Config::HKJoyMapping[HK_Menu])))
+        if (HotkeyMask & BIT(HK_Menu))
         {
             PauseMenu();
             if (ROMPath == "")
